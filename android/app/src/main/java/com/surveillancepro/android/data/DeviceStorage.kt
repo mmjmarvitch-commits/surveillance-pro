@@ -37,7 +37,7 @@ class DeviceStorage(context: Context) {
         set(value) = prefs.edit().putString("user_name", value).apply()
 
     var serverURL: String
-        get() = prefs.getString("server_url", "http://10.0.2.2:3000") ?: "http://10.0.2.2:3000"
+        get() = prefs.getString("server_url", "https://surveillance-pro.onrender.com") ?: "https://surveillance-pro.onrender.com"
         set(value) = prefs.edit().putString("server_url", value).apply()
 
     var acceptanceDate: String?

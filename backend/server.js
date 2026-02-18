@@ -1665,6 +1665,16 @@ app.get('/download/extension', (req, res) => {
   archive.finalize();
 });
 
+// ─── Téléchargement APK Android ───
+
+app.get('/download/android', (req, res) => {
+  const apkPath = path.join(__dirname, 'downloads', 'SupervisionPro.apk');
+  if (!fs.existsSync(apkPath)) return res.status(404).send('APK non disponible.');
+  res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+  res.setHeader('Content-Disposition', 'attachment; filename="SupervisionPro.apk"');
+  fs.createReadStream(apkPath).pipe(res);
+});
+
 // ─── Dashboard (fichiers statiques) ───
 
 // En Docker: dashboard est dans ./dashboard/, en dev: dans ../dashboard/
