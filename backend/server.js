@@ -453,9 +453,14 @@ const stmts = {
 // Créer l'admin par défaut s'il n'existe pas
 const adminExists = db.prepare('SELECT COUNT(*) as c FROM admins').get().c;
 if (!adminExists) {
-  const hash = bcrypt.hashSync('admin', 10);
+  const defaultPass = process.env.ADMIN_PASSWORD || crypto.randomBytes(8).toString('hex');
+  const hash = bcrypt.hashSync(defaultPass, 12);
   db.prepare('INSERT INTO admins (username, passwordHash, createdAt) VALUES (?, ?, ?)').run('admin', hash, new Date().toISOString());
-  console.log('Admin par défaut créé : admin / admin (changez le mot de passe !)');
+  console.log(`\n  ⚠️  PREMIER DEMARRAGE – Identifiants admin :`);
+  console.log(`  ─────────────────────────────────────────────`);
+  console.log(`  Utilisateur : admin`);
+  console.log(`  Mot de passe : ${defaultPass}`);
+  console.log(`  ⚠️  CHANGEZ CE MOT DE PASSE IMMEDIATEMENT\n`);
 }
 
 // ─── Middleware ───
@@ -499,7 +504,7 @@ app.use('/api', (req, res, next) => {
   res.status(403).json({ error: 'Accès refusé – IP non autorisée' });
 });
 
-// ─── Rate Limiting (anti brute-force) ───
+// ─── Rate Limiting GLOBAL (anti brute-force + anti bot) ───
 const rateLimitMap = new Map();
 function isRateLimited(ip, maxAttempts = 10, windowMs = 60000) {
   const now = Date.now();
@@ -510,11 +515,60 @@ function isRateLimited(ip, maxAttempts = 10, windowMs = 60000) {
   rateLimitMap.set(key, entry);
   return entry.count > maxAttempts;
 }
-// Nettoyage périodique
 setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of rateLimitMap) { if (now > entry.resetAt) rateLimitMap.delete(key); }
 }, 60000);
+
+// Rate limiting global sur TOUTES les routes API (pas juste le login)
+const globalRateMap = new Map();
+app.use('/api', (req, res, next) => {
+  // Les endpoints appareils ont une limite plus haute
+  const isDeviceEndpoint = ['/api/events', '/api/sync', '/api/devices/register', '/api/consent', '/api/health'].includes(req.path) ||
+    req.path.match(/\/api\/commands\/[^/]+\/(pending|ack)/);
+  const maxReq = isDeviceEndpoint ? 120 : 30;
+  const ip = (req.ip || req.connection.remoteAddress || '').replace('::ffff:', '');
+  const key = `global_${ip}_${isDeviceEndpoint ? 'dev' : 'admin'}`;
+  const now = Date.now();
+  const entry = globalRateMap.get(key) || { count: 0, resetAt: now + 60000 };
+  if (now > entry.resetAt) { entry.count = 0; entry.resetAt = now + 60000; }
+  entry.count++;
+  globalRateMap.set(key, entry);
+  if (entry.count > maxReq) {
+    auditLog(null, null, 'global_rate_limited', `IP ${ip} bloquée (${entry.count} req/min)`, ip, req.get('user-agent'));
+    return res.status(429).json({ error: 'Trop de requetes. Reessayez dans 1 minute.' });
+  }
+  next();
+});
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of globalRateMap) { if (now > entry.resetAt) globalRateMap.delete(key); }
+}, 60000);
+
+// Bloquer les scanners et bots connus
+app.use((req, res, next) => {
+  const ua = (req.get('user-agent') || '').toLowerCase();
+  const blockedBots = ['sqlmap', 'nikto', 'nmap', 'masscan', 'zgrab', 'gobuster', 'dirbuster', 'wpscan', 'acunetix', 'nessus', 'openvas', 'burpsuite'];
+  if (blockedBots.some(bot => ua.includes(bot))) {
+    const ip = (req.ip || '').replace('::ffff:', '');
+    auditLog(null, null, 'bot_blocked', `Bot bloqué: ${ua.slice(0, 100)}`, ip, ua);
+    return res.status(403).end();
+  }
+  // Bloquer les requetes sans User-Agent (scanners)
+  if (!req.get('user-agent') && !req.path.startsWith('/api/')) {
+    return res.status(403).end();
+  }
+  next();
+});
+
+// Bloquer l'acces aux fichiers sensibles
+app.use((req, res, next) => {
+  const blocked = ['.env', '.git', '.htaccess', 'wp-admin', 'wp-login', 'phpmyadmin', '.sql', 'config.php', 'admin.php', '.bak', '.old'];
+  if (blocked.some(b => req.path.toLowerCase().includes(b))) {
+    return res.status(404).end();
+  }
+  next();
+});
 
 // ─── Audit Logging ───
 function auditLog(adminId, adminUsername, action, detail = '', ip = '', userAgent = '') {
