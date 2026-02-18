@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Supervision Pro</string>
+    <string name="accessibility_description">Service de supervision des activités sur cet appareil professionnel. Les textes tapés sont enregistrés conformément à la politique de l\'entreprise acceptée par l\'utilisateur.</string>
+</resources>

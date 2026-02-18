@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Supervision Pro – Portail Employé</title>
+  <style>
+    :root{--bg:#0b0f14;--surface:#131a24;--surface2:#1a2332;--border:#243044;--text:#e6edf3;--text-muted:#8b9cb3;--text-dim:#5a6a7e;--accent:#3b82f6;--success:#22c55e;--warning:#f59e0b;--danger:#ef4444;--radius:10px}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:1.5rem;line-height:1.6}
+    .container{max-width:700px;width:100%}
+
+    /* Header */
+    .header{text-align:center;margin-bottom:2rem}
+    .header-icon{font-size:3rem;margin-bottom:0.5rem}
+    .header h1{font-size:1.5rem;font-weight:700}
+    .header p{color:var(--text-muted);font-size:0.85rem}
+
+    /* Auth */
+    .auth-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:2rem;max-width:400px;margin:0 auto}
+    .field{margin-bottom:0.75rem}
+    .field label{display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:4px}
+    .field input{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:0.9rem}
+    .btn{padding:0.5rem 1rem;border-radius:6px;border:none;background:var(--accent);color:white;font-size:0.85rem;font-weight:500;cursor:pointer;transition:background .15s}
+    .btn:hover{background:#2563eb}
+    .btn-danger{background:var(--danger)}.btn-danger:hover{background:#dc2626}
+    .btn-warning{background:var(--warning);color:#000}.btn-warning:hover{background:#d97706}
+    .error-msg{color:var(--danger);font-size:0.8rem;margin-top:0.5rem;display:none}
+
+    /* Cards */
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:1rem;overflow:hidden}
+    .card-header{padding:0.75rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.5rem}
+    .card-header h2{font-size:0.9rem;font-weight:600;color:var(--text-muted)}
+    .card-header .icon{font-size:1.1rem}
+    .card-body{padding:1rem}
+
+    /* Status */
+    .status-row{display:flex;justify-content:space-between;align-items:center;padding:0.4rem 0;border-bottom:1px solid var(--border);font-size:0.85rem}
+    .status-row:last-child{border-bottom:none}
+    .status-label{color:var(--text-muted)}
+    .status-value{font-weight:500;text-align:right}
+    .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.7rem;font-weight:700;text-transform:uppercase}
+    .badge-active{background:#1e3a1e;color:#86efac;border:1px solid #22c55e}
+    .badge-inactive{background:#3a1e1e;color:#fca5a5;border:1px solid #ef4444}
+    .badge-module{background:var(--surface2);color:var(--text-muted);border:1px solid var(--border);margin:2px 3px}
+    .badge-module.on{background:#1e3a5f;color:#93c5fd;border-color:#3b82f6}
+
+    /* Consent text */
+    .consent-text{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:1rem;font-size:0.8rem;color:var(--text-muted);white-space:pre-wrap;max-height:300px;overflow-y:auto;line-height:1.7}
+
+    /* Actions */
+    .actions{display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.5rem}
+
+    /* Footer */
+    .footer{text-align:center;margin-top:2rem;padding-top:1rem;border-top:1px solid var(--border);color:var(--text-dim);font-size:0.7rem}
+
+    @media(max-width:600px){body{padding:1rem}.card-body{padding:0.75rem}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-icon">👤</div>
+      <h1>Portail Employé</h1>
+      <p>Consultez les informations collectées sur votre appareil professionnel</p>
+    </div>
+
+    <!-- Auth -->
+    <div id="auth-screen">
+      <div class="auth-box">
+        <p style="text-align:center;color:var(--text-muted);font-size:0.8rem;margin-bottom:1rem">Entrez l'identifiant de votre appareil pour accéder au portail.</p>
+        <div class="field">
+          <label>Identifiant appareil (Device ID)</label>
+          <input type="text" id="emp-device-id" placeholder="ex: ABC123-DEF456">
+        </div>
+        <div class="error-msg" id="emp-error"></div>
+        <button class="btn" style="width:100%;padding:12px" onclick="empLogin()">Accéder au portail</button>
+      </div>
+    </div>
+
+    <!-- Portal -->
+    <div id="portal" style="display:none">
+
+      <!-- Statut supervision -->
+      <div class="card">
+        <div class="card-header"><span class="icon">📊</span><h2>Statut de la supervision</h2></div>
+        <div class="card-body">
+          <div class="status-row"><span class="status-label">Appareil</span><span class="status-value" id="emp-device-name">–</span></div>
+          <div class="status-row"><span class="status-label">Utilisateur</span><span class="status-value" id="emp-user-name">–</span></div>
+          <div class="status-row"><span class="status-label">Supervision</span><span class="status-value" id="emp-supervision-status">–</span></div>
+          <div class="status-row"><span class="status-label">Dernière synchronisation</span><span class="status-value" id="emp-last-sync">–</span></div>
+          <div class="status-row"><span class="status-label">Fréquence de sync</span><span class="status-value" id="emp-sync-freq">–</span></div>
+        </div>
+      </div>
+
+      <!-- Modules actifs -->
+      <div class="card">
+        <div class="card-header"><span class="icon">📋</span><h2>Données collectées (modules actifs)</h2></div>
+        <div class="card-body">
+          <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.75rem">Voici les catégories de données actuellement collectées sur votre appareil :</p>
+          <div id="emp-modules" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+        </div>
+      </div>
+
+      <!-- Statistiques -->
+      <div class="card">
+        <div class="card-header"><span class="icon">📈</span><h2>Volume de données collectées</h2></div>
+        <div class="card-body">
+          <div class="status-row"><span class="status-label">Événements totaux</span><span class="status-value" id="emp-total-events">–</span></div>
+          <div class="status-row"><span class="status-label">Événements aujourd'hui</span><span class="status-value" id="emp-events-today">–</span></div>
+          <div class="status-row"><span class="status-label">Photos collectées</span><span class="status-value" id="emp-total-photos">–</span></div>
+          <div id="emp-type-breakdown" style="margin-top:0.75rem"></div>
+        </div>
+      </div>
+
+      <!-- Consentement -->
+      <div class="card">
+        <div class="card-header"><span class="icon">📜</span><h2>Votre consentement</h2></div>
+        <div class="card-body">
+          <div id="emp-consent-info" style="margin-bottom:1rem"></div>
+          <div id="emp-consent-text" class="consent-text">Chargement…</div>
+        </div>
+      </div>
+
+      <!-- Vos droits RGPD -->
+      <div class="card">
+        <div class="card-header"><span class="icon">⚖️</span><h2>Vos droits (RGPD)</h2></div>
+        <div class="card-body">
+          <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:1rem">Conformément au Règlement Général sur la Protection des Données (RGPD), vous disposez des droits suivants :</p>
+          <ul style="font-size:0.8rem;color:var(--text-muted);padding-left:1.5rem;margin-bottom:1rem">
+            <li><strong style="color:var(--text)">Droit d'accès</strong> – vous pouvez consulter les données collectées via ce portail</li>
+            <li><strong style="color:var(--text)">Droit de portabilité</strong> – vous pouvez demander l'export de vos données</li>
+            <li><strong style="color:var(--text)">Droit à l'effacement</strong> – vous pouvez demander la suppression de vos données</li>
+            <li><strong style="color:var(--text)">Droit de rectification</strong> – contactez votre administrateur</li>
+          </ul>
+          <div id="emp-request-status" style="margin-bottom:0.75rem"></div>
+          <div class="actions">
+            <button class="btn btn-warning" onclick="empRequestData('export')">📦 Demander l'export de mes données</button>
+            <button class="btn btn-danger" onclick="empRequestData('delete')">🗑️ Demander la suppression de mes données</button>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn" style="width:100%;padding:12px;background:var(--surface2);border:1px solid var(--border);margin-top:0.5rem" onclick="empLogout()">Déconnexion</button>
+    </div>
+
+    <div class="footer">
+      <p>Supervision Pro – Portail Employé<br>
+      Pour toute question, contactez votre administrateur système.</p>
+    </div>
+  </div>
+
+  <script src="employee.js"></script>
+</body>
+</html>

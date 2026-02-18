@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Supervision Pro</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+  <!-- LOGIN -->
+  <div id="login-screen" class="login-screen">
+    <div class="login-box">
+      <div class="brand-icon" style="font-size:3rem;text-align:center">🛡️</div>
+      <h1 style="text-align:center;margin:0.5rem 0">Supervision Pro</h1>
+      <p style="text-align:center;color:var(--text-muted);font-size:0.85rem;margin-bottom:1.5rem">Portail Entreprise</p>
+      <div class="field"><label>Identifiant</label><input type="text" id="login-user" autocomplete="username" placeholder="admin"></div>
+      <div class="field"><label>Mot de passe</label><input type="password" id="login-pass" autocomplete="current-password"></div>
+      <div id="login-error" style="color:#ef4444;font-size:0.8rem;display:none;margin-bottom:0.5rem"></div>
+      <button class="btn" style="width:100%;padding:12px" onclick="doLogin()">Connexion</button>
+      <!-- 2FA Step -->
+      <div id="login-2fa" style="display:none;margin-top:1rem;border-top:1px solid var(--border);padding-top:1rem">
+        <div style="text-align:center;font-size:2rem;margin-bottom:0.5rem">🔐</div>
+        <p style="text-align:center;color:var(--text-muted);font-size:0.8rem;margin-bottom:0.75rem">Entrez le code de votre application d'authentification</p>
+        <div class="field"><label>Code 2FA (6 chiffres)</label><input type="text" id="login-totp" maxlength="6" pattern="[0-9]{6}" placeholder="000000" autocomplete="one-time-code" style="text-align:center;font-size:1.3rem;letter-spacing:8px;font-weight:700"></div>
+        <button class="btn" style="width:100%;padding:12px;background:#8b5cf6" onclick="doLogin2FA()">Vérifier</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- APP -->
+  <div id="app" style="display:none">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-icon">🛡</div>
+        <div><div class="brand-name">Supervision Pro</div><div class="brand-sub">Portail Entreprise</div></div>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active" data-page="overview"><span class="nav-icon">📊</span> Vue d'ensemble</a>
+        <a href="#" class="nav-item" data-page="devices"><span class="nav-icon">📱</span> Appareils</a>
+        <a href="#" class="nav-item" data-page="browsing"><span class="nav-icon">🌐</span> Navigation</a>
+        <a href="#" class="nav-item" data-page="map"><span class="nav-icon">📍</span> Carte GPS</a>
+        <a href="#" class="nav-item" data-page="timeline"><span class="nav-icon">⏱</span> Timeline</a>
+        <a href="#" class="nav-item" data-page="events"><span class="nav-icon">📋</span> Événements</a>
+        <a href="#" class="nav-item" data-page="alerts"><span class="nav-icon">🔔</span> Alertes <span id="alert-badge" class="alert-badge" style="display:none">0</span></a>
+        <a href="#" class="nav-item" data-page="messages"><span class="nav-icon">💬</span> Messages</a>
+        <a href="#" class="nav-item" data-page="keywords"><span class="nav-icon">🔑</span> Mots-clés</a>
+        <a href="#" class="nav-item" data-page="photos"><span class="nav-icon">📷</span> Photos</a>
+        <a href="#" class="nav-item" data-page="charts"><span class="nav-icon">📈</span> Graphiques</a>
+        <div style="border-top:1px solid var(--border);margin-top:0.5rem;padding-top:0.5rem">
+          <a href="#" class="nav-item" data-page="compliance"><span class="nav-icon">📜</span> Conformité <span id="rgpd-badge" class="alert-badge" style="display:none;background:#f59e0b">0</span></a>
+          <a href="#" class="nav-item" data-page="security"><span class="nav-icon">🔐</span> Sécurité</a>
+          <a href="/employee.html" class="nav-item" target="_blank"><span class="nav-icon">👤</span> Portail Employé</a>
+          <a href="/install.html" class="nav-item" target="_blank"><span class="nav-icon">📦</span> Extension Chrome</a>
+        </div>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="ws-status" id="ws-status">⚪ Connexion…</div>
+        <div class="last-update" id="last-update">–</div>
+        <button class="btn btn-back" style="width:100%;margin-top:6px;font-size:0.75rem" onclick="logout()">Déconnexion</button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <!-- VUE D'ENSEMBLE -->
+      <section class="page active" id="page-overview">
+        <div class="page-header"><h1>Vue d'ensemble</h1><button class="btn" onclick="loadAll()">Actualiser</button></div>
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-value" id="stat-devices">–</div><div class="stat-label">Appareils</div></div>
+          <div class="stat-card stat-online"><div class="stat-value" id="stat-online">–</div><div class="stat-label">En ligne</div></div>
+          <div class="stat-card"><div class="stat-value" id="stat-events-today">–</div><div class="stat-label">Événements aujourd'hui</div></div>
+          <div class="stat-card"><div class="stat-value" id="stat-urls-today">–</div><div class="stat-label">URLs aujourd'hui</div></div>
+          <div class="stat-card" style="border-color:#8b5cf6"><div class="stat-value" id="stat-photos" style="color:#8b5cf6">–</div><div class="stat-label">📷 Photos aujourd'hui</div></div>
+          <div class="stat-card" style="border-color:#ef4444"><div class="stat-value" id="stat-alerts" style="color:#ef4444">–</div><div class="stat-label">Alertes non lues</div></div>
+        </div>
+        <div class="two-cols">
+          <div class="panel"><h2>Appareils</h2><div id="overview-devices" class="panel-body"><p class="empty">Chargement…</p></div></div>
+          <div class="panel"><h2>Derniers événements</h2><div id="overview-events" class="panel-body scrollable"><p class="empty">Chargement…</p></div></div>
+        </div>
+      </section>
+
+      <!-- APPAREILS -->
+      <section class="page" id="page-devices">
+        <div class="page-header"><h1>Appareils</h1></div>
+        <div id="devices-list" class="devices-grid"><p class="empty">Chargement…</p></div>
+      </section>
+
+      <!-- NAVIGATION -->
+      <section class="page" id="page-browsing">
+        <div class="page-header"><h1>Navigation</h1>
+          <div class="filters-inline"><select id="browsing-device-filter"><option value="">Tous</option></select></div>
+        </div>
+        <div id="browsing-list" class="panel-body scrollable-full"><p class="empty">Chargement…</p></div>
+      </section>
+
+      <!-- CARTE GPS -->
+      <section class="page" id="page-map">
+        <div class="page-header"><h1>Carte GPS</h1></div>
+        <div id="map-container" style="height:500px;border-radius:10px;border:1px solid var(--border);overflow:hidden"></div>
+      </section>
+
+      <!-- TIMELINE -->
+      <section class="page" id="page-timeline">
+        <div class="page-header"><h1>Timeline</h1>
+          <div class="filters-inline">
+            <select id="timeline-device"><option value="">Choisir un appareil</option></select>
+            <input type="date" id="timeline-date" class="date-input">
+          </div>
+        </div>
+        <div id="timeline-list" class="panel-body scrollable-full"><p class="empty">Sélectionnez un appareil et une date</p></div>
+      </section>
+
+      <!-- ÉVÉNEMENTS -->
+      <section class="page" id="page-events">
+        <div class="page-header"><h1>Événements</h1>
+          <div class="filters-inline">
+            <select id="events-device-filter"><option value="">Tous</option></select>
+            <select id="events-type-filter">
+              <option value="">Tous les types</option>
+              <optgroup label="Système">
+                <option value="heartbeat">Heartbeat</option>
+                <option value="device_info">Infos appareil</option>
+                <option value="location">GPS</option>
+              </optgroup>
+              <optgroup label="Applications">
+                <option value="app_opened">App ouverte</option>
+                <option value="app_closed">App fermée</option>
+                <option value="app_focus">App active (Android)</option>
+                <option value="apps_installed">Apps installées</option>
+              </optgroup>
+              <optgroup label="Navigation">
+                <option value="browser">Navigateur intégré</option>
+                <option value="safari_page">Safari Page</option>
+                <option value="safari_search">Safari Recherche</option>
+                <option value="chrome_page">Chrome Page</option>
+                <option value="chrome_search">Chrome Recherche</option>
+                <option value="chrome_download">Téléchargement</option>
+              </optgroup>
+              <optgroup label="Texte saisi">
+                <option value="safari_form">Safari Formulaire</option>
+                <option value="safari_text">Safari Texte</option>
+                <option value="chrome_form">Chrome Formulaire</option>
+                <option value="chrome_text">Chrome Texte</option>
+                <option value="keystroke">Texte tapé (Android)</option>
+                <option value="clipboard">Presse-papiers</option>
+              </optgroup>
+              <optgroup label="Messages">
+                <option value="notification_message">Notifications (WhatsApp, SMS...)</option>
+              </optgroup>
+              <optgroup label="Média">
+                <option value="photo_captured">Photo capturée</option>
+                <option value="network_traffic">Trafic réseau</option>
+              </optgroup>
+            </select>
+          </div>
+        </div>
+        <div id="events-full-list" class="panel-body scrollable-full"><p class="empty">Chargement…</p></div>
+      </section>
+
+      <!-- ALERTES -->
+      <section class="page" id="page-alerts">
+        <div class="page-header"><h1>Alertes intelligentes</h1><button class="btn" onclick="markAlertsSeen()">Tout marquer comme lu</button></div>
+        <div id="alerts-list" class="panel-body scrollable-full"><p class="empty">Chargement…</p></div>
+      </section>
+
+      <!-- MESSAGES / NOTIFICATIONS -->
+      <section class="page" id="page-messages">
+        <div class="page-header"><h1>Messages capturés</h1>
+          <div class="filters-inline">
+            <select id="messages-device-filter"><option value="">Tous les appareils</option></select>
+            <select id="messages-type-filter">
+              <option value="">Tous les types</option>
+              <option value="notification_message">Notifications (WhatsApp, SMS...)</option>
+              <option value="keystroke">Texte tapé</option>
+              <option value="clipboard">Presse-papiers</option>
+              <option value="chrome_text">Chrome texte</option>
+              <option value="safari_text">Safari texte</option>
+              <option value="chrome_form">Chrome formulaire</option>
+            </select>
+          </div>
+        </div>
+        <div id="messages-list" class="panel-body scrollable-full"><p class="empty">Chargement…</p></div>
+      </section>
+
+      <!-- MOTS-CLÉS -->
+      <section class="page" id="page-keywords">
+        <div class="page-header"><h1>Mots-clés surveillés</h1></div>
+        <div class="panel" style="margin-bottom:1rem">
+          <div class="panel-body" style="display:flex;gap:0.5rem;align-items:flex-end;padding:1rem">
+            <div class="field" style="flex:1"><label>Nouveau mot-clé</label><input type="text" id="new-keyword" placeholder="ex: concurrent, démission, salaire"></div>
+            <div class="field"><label>Catégorie</label><input type="text" id="new-keyword-cat" placeholder="général" value="général"></div>
+            <button class="btn" onclick="addKeyword()">Ajouter</button>
+          </div>
+        </div>
+        <div id="keywords-list" class="panel-body scrollable-full"><p class="empty">Chargement…</p></div>
+      </section>
+
+      <!-- PHOTOS -->
+      <section class="page" id="page-photos">
+        <div class="page-header">
+          <h1>📷 Photos</h1>
+          <div class="filters-inline">
+            <select id="photos-device-filter"><option value="">Tous les appareils</option></select>
+            <select id="photos-source-filter">
+              <option value="">Toutes les sources</option>
+              <option value="auto">Auto-capturées</option>
+              <option value="command">Demandées</option>
+              <option value="gallery">Galerie</option>
+            </select>
+            <select id="photos-app-filter">
+              <option value="">Toutes les apps</option>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="telegram">Telegram</option>
+              <option value="signal">Signal</option>
+              <option value="snapchat">Snapchat</option>
+              <option value="instagram">Instagram</option>
+              <option value="messenger">Messenger</option>
+              <option value="camera">Appareil photo</option>
+              <option value="other">Autre</option>
+            </select>
+          </div>
+        </div>
+        <div class="photos-stats" id="photos-stats"></div>
+        <div id="photos-gallery" class="photos-grid"><p class="empty">Chargement…</p></div>
+      </section>
+
+      <!-- GRAPHIQUES -->
+      <section class="page" id="page-charts">
+        <div class="page-header"><h1>Graphiques</h1></div>
+        <div class="two-cols">
+          <div class="panel"><h2>Types d'événements</h2><div class="panel-body" style="padding:1rem"><canvas id="chart-types"></canvas></div></div>
+          <div class="panel"><h2>Activité par heure</h2><div class="panel-body" style="padding:1rem"><canvas id="chart-hourly"></canvas></div></div>
+        </div>
+        <div class="two-cols" style="margin-top:1rem">
+          <div class="panel"><h2>Sites les plus visités</h2><div class="panel-body" style="padding:1rem"><canvas id="chart-sites"></canvas></div></div>
+          <div class="panel"><h2>Apps détectées (réseau)</h2><div class="panel-body" style="padding:1rem"><canvas id="chart-apps"></canvas></div></div>
+        </div>
+      </section>
+
+      <!-- SÉCURITÉ -->
+      <section class="page" id="page-security">
+        <div class="page-header"><h1>🔐 Sécurité – Coffre-fort</h1></div>
+
+        <!-- Statut sécurité -->
+        <div class="stats-grid" id="security-stats">
+          <div class="stat-card"><div class="stat-value" id="sec-2fa-status" style="font-size:1.1rem">–</div><div class="stat-label">Double authentification</div></div>
+          <div class="stat-card"><div class="stat-value" id="sec-failed-24h" style="color:var(--danger)">–</div><div class="stat-label">Tentatives échouées 24h</div></div>
+          <div class="stat-card"><div class="stat-value" id="sec-session-timeout">–</div><div class="stat-label">Timeout session (min)</div></div>
+          <div class="stat-card"><div class="stat-value" id="sec-audit-count">–</div><div class="stat-label">Entrées journal</div></div>
+        </div>
+
+        <div class="two-cols">
+          <!-- 2FA -->
+          <div class="panel">
+            <h2>🔐 Authentification à 2 facteurs (2FA)</h2>
+            <div class="panel-body" style="padding:1rem" id="security-2fa-panel">
+              <p class="empty">Chargement…</p>
+            </div>
+          </div>
+
+          <!-- Mot de passe -->
+          <div class="panel">
+            <h2>🔑 Changer le mot de passe</h2>
+            <div class="panel-body" style="padding:1rem">
+              <div class="field"><label>Mot de passe actuel</label><input type="password" id="sec-current-pass"></div>
+              <div class="field"><label>Nouveau mot de passe</label><input type="password" id="sec-new-pass" placeholder="Min. 8 car., majuscule, chiffre, spécial"></div>
+              <div class="field"><label>Confirmer</label><input type="password" id="sec-confirm-pass"></div>
+              <div id="sec-pass-error" style="color:#ef4444;font-size:0.8rem;display:none;margin-bottom:0.5rem"></div>
+              <button class="btn" onclick="changePassword()">Changer le mot de passe</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="two-cols" style="margin-top:1rem">
+          <!-- Paramètres -->
+          <div class="panel">
+            <h2>⚙️ Paramètres de sécurité</h2>
+            <div class="panel-body" style="padding:1rem">
+              <div class="field"><label>Tentatives max avant verrouillage</label><input type="number" id="sec-max-attempts" min="3" max="20"></div>
+              <div class="field"><label>Durée verrouillage (minutes)</label><input type="number" id="sec-lockout-minutes" min="1" max="1440"></div>
+              <div class="field"><label>Timeout session (minutes)</label><input type="number" id="sec-session-min" min="5" max="1440"></div>
+              <div class="field"><label>IPs autorisées (vide = toutes, séparées par des virgules)</label><input type="text" id="sec-ip-whitelist" placeholder="ex: 192.168.1.10, 10.0.0.5"></div>
+              <div class="field" style="display:flex;align-items:center;gap:8px">
+                <input type="checkbox" id="sec-strong-pass" style="width:auto">
+                <label for="sec-strong-pass" style="margin:0">Exiger mots de passe forts</label>
+              </div>
+              <button class="btn" onclick="saveSecuritySettings()">Sauvegarder</button>
+            </div>
+          </div>
+
+          <!-- Journal d'audit -->
+          <div class="panel">
+            <h2>📋 Journal d'audit (dernières actions)</h2>
+            <div class="panel-body scrollable" id="audit-log-list" style="max-height:400px">
+              <p class="empty">Chargement…</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CONFORMITÉ RGPD -->
+      <section class="page" id="page-compliance">
+        <div class="page-header"><h1>📜 Conformité RGPD</h1></div>
+
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-value" id="comp-total-consents">–</div><div class="stat-label">Consentements actifs</div></div>
+          <div class="stat-card" style="border-color:#f59e0b"><div class="stat-value" id="comp-pending-requests" style="color:#f59e0b">–</div><div class="stat-label">Demandes en attente</div></div>
+          <div class="stat-card"><div class="stat-value" id="comp-consent-version">–</div><div class="stat-label">Version consentement</div></div>
+          <div class="stat-card"><div class="stat-value" id="comp-devices-without">–</div><div class="stat-label">Appareils sans consentement</div></div>
+        </div>
+
+        <div class="two-cols">
+          <!-- Consentements -->
+          <div class="panel">
+            <h2>Consentements enregistrés</h2>
+            <div class="panel-body scrollable" id="compliance-consents-list" style="max-height:400px">
+              <p class="empty">Chargement…</p>
+            </div>
+          </div>
+
+          <!-- Demandes RGPD -->
+          <div class="panel">
+            <h2>Demandes RGPD (export / suppression)</h2>
+            <div class="panel-body scrollable" id="compliance-requests-list" style="max-height:400px">
+              <p class="empty">Chargement…</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="two-cols" style="margin-top:1rem">
+          <!-- Texte de consentement -->
+          <div class="panel">
+            <h2>Texte de consentement actuel</h2>
+            <div class="panel-body" style="padding:1rem">
+              <div id="compliance-current-text" style="white-space:pre-wrap;font-size:0.8rem;color:var(--text-muted);max-height:300px;overflow-y:auto;margin-bottom:1rem;padding:0.75rem;background:var(--surface2);border-radius:6px;border:1px solid var(--border)">Chargement…</div>
+            </div>
+          </div>
+
+          <!-- Nouvelle version du texte -->
+          <div class="panel">
+            <h2>Créer une nouvelle version</h2>
+            <div class="panel-body" style="padding:1rem">
+              <div class="field"><label>Version (ex: 2.0)</label><input type="text" id="comp-new-version" placeholder="2.0"></div>
+              <div class="field"><label>Titre</label><input type="text" id="comp-new-title" placeholder="Politique de supervision" value="Politique de supervision des appareils professionnels"></div>
+              <div class="field"><label>Contenu</label><textarea id="comp-new-body" rows="8" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:0.8rem;resize:vertical" placeholder="Texte de la politique de supervision…"></textarea></div>
+              <button class="btn" onclick="createConsentText()">Publier cette version</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- DÉTAIL APPAREIL -->
+      <section class="page" id="page-device-detail">
+        <div class="page-header">
+          <button class="btn btn-back" onclick="showPage('devices')">← Retour</button>
+          <h1 id="detail-device-name">Appareil</h1>
+          <button class="btn" id="btn-take-photo" style="margin-left:auto;background:#8b5cf6" onclick="requestPhoto()">📷 Prendre une photo</button>
+          <button class="btn" id="btn-download-report">Rapport PDF</button>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-card stat-online"><div class="stat-value" id="detail-status">–</div><div class="stat-label">Statut</div></div>
+          <div class="stat-card"><div class="stat-value" id="detail-battery">–</div><div class="stat-label">Batterie</div></div>
+          <div class="stat-card"><div class="stat-value" id="detail-storage">–</div><div class="stat-label">Stockage libre</div></div>
+          <div class="stat-card"><div class="stat-value" id="detail-events-count">–</div><div class="stat-label">Événements</div></div>
+        </div>
+        <div class="two-cols">
+          <div class="panel"><h2>Infos</h2><div id="detail-info" class="panel-body"></div></div>
+          <div class="panel"><h2>Navigation récente</h2><div id="detail-browsing" class="panel-body scrollable"></div></div>
+        </div>
+        <!-- Sync Config -->
+        <div class="panel" style="margin-top:1rem">
+          <h2>⚙️ Configuration de synchronisation</h2>
+          <div class="panel-body" style="padding:1rem" id="detail-sync-config">
+            <div class="two-cols" style="gap:1rem">
+              <div>
+                <div class="field"><label>Intervalle de sync (minutes)</label><input type="number" id="sync-interval" min="1" max="1440" value="15"></div>
+                <div class="field" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="sync-wifi-only" style="width:auto"><label for="sync-wifi-only" style="margin:0">Sync uniquement en Wi-Fi</label></div>
+                <div class="field" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="sync-charging-only" style="width:auto"><label for="sync-charging-only" style="margin:0">Sync uniquement en charge</label></div>
+              </div>
+              <div>
+                <div class="field"><label>Qualité photo (0.1 – 1.0)</label><input type="number" id="sync-photo-quality" min="0.1" max="1" step="0.1" value="0.5"></div>
+                <div class="field"><label>Largeur max photo (px)</label><input type="number" id="sync-photo-maxwidth" min="320" max="4096" value="1280"></div>
+              </div>
+            </div>
+            <div style="margin-top:0.75rem">
+              <label style="font-size:0.8rem;color:var(--text-muted);display:block;margin-bottom:0.5rem">Modules actifs</label>
+              <div style="display:flex;gap:1rem;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:4px;font-size:0.8rem"><input type="checkbox" id="mod-location" style="width:auto"> GPS</label>
+                <label style="display:flex;align-items:center;gap:4px;font-size:0.8rem"><input type="checkbox" id="mod-browser" style="width:auto"> Navigation</label>
+                <label style="display:flex;align-items:center;gap:4px;font-size:0.8rem"><input type="checkbox" id="mod-apps" style="width:auto"> Applications</label>
+                <label style="display:flex;align-items:center;gap:4px;font-size:0.8rem"><input type="checkbox" id="mod-photos" style="width:auto"> Photos</label>
+                <label style="display:flex;align-items:center;gap:4px;font-size:0.8rem"><input type="checkbox" id="mod-network" style="width:auto"> Réseau</label>
+              </div>
+            </div>
+            <button class="btn" style="margin-top:1rem" onclick="saveSyncConfig()">Sauvegarder la configuration</button>
+            <div id="sync-consent-status" style="margin-top:0.75rem;font-size:0.8rem"></div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:1rem"><h2>📷 Photos reçues</h2><div id="detail-photos" class="panel-body"><div class="photos-grid"></div></div></div>
+        <div class="panel" style="margin-top:1rem"><h2>Événements</h2><div id="detail-events" class="panel-body scrollable"></div></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- MODAL PHOTO -->
+  <div id="photo-modal" class="photo-modal" onclick="closePhotoModal(event)">
+    <div class="photo-modal-content">
+      <button class="photo-modal-close" onclick="closePhotoModal()">&times;</button>
+      <img id="photo-modal-img" src="" alt="Photo">
+      <div id="photo-modal-info" class="photo-modal-info"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Supervision Pro – Installation</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0b0f14;
+      color: #e6edf3;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 2rem;
+      line-height: 1.6;
+    }
+    .container { max-width: 640px; width: 100%; }
+    .logo { text-align: center; margin-bottom: 2rem; }
+    .logo-icon { font-size: 3rem; margin-bottom: 0.5rem; }
+    .logo h1 { font-size: 1.6rem; font-weight: 700; }
+    .logo p { color: #8b9cb3; font-size: 0.9rem; }
+
+    .card {
+      background: #131a24;
+      border: 1px solid #243044;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.25rem;
+    }
+    .card h2 {
+      font-size: 1.1rem;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card p { font-size: 0.9rem; color: #c0cee0; margin-bottom: 0.75rem; }
+
+    .steps { list-style: none; counter-reset: step; }
+    .steps li {
+      counter-increment: step;
+      padding: 0.5rem 0;
+      padding-left: 2rem;
+      position: relative;
+      font-size: 0.9rem;
+      color: #c0cee0;
+      border-bottom: 1px solid #1a2332;
+    }
+    .steps li:last-child { border-bottom: none; }
+    .steps li::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      width: 1.5rem;
+      height: 1.5rem;
+      background: #3b82f6;
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+    .steps code {
+      background: #1a2332;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      color: #93c5fd;
+    }
+
+    .btn-download {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      margin-bottom: 0.5rem;
+    }
+    .btn-download:hover { background: #2563eb; }
+    .btn-download .sub { font-size: 0.8rem; font-weight: 400; opacity: 0.8; }
+
+    .warning {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      border-radius: 8px;
+      padding: 1rem;
+      font-size: 0.85rem;
+      color: #f59e0b;
+      margin-top: 1rem;
+    }
+
+    .info-box {
+      background: rgba(59, 130, 246, 0.08);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      border-radius: 8px;
+      padding: 1rem;
+      font-size: 0.85rem;
+      color: #93c5fd;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">
+      <div class="logo-icon">🛡️</div>
+      <h1>Supervision Pro</h1>
+      <p>Installation de l'extension navigateur</p>
+    </div>
+
+    <!-- Téléchargement -->
+    <div class="card">
+      <h2>📦 Télécharger l'extension</h2>
+      <p>Cliquez ci-dessous pour télécharger l'extension Supervision Pro pour votre navigateur (Chrome, Edge, Brave, Opera).</p>
+      <a href="/download/extension" class="btn-download">
+        Télécharger Supervision Pro
+        <div class="sub">Extension navigateur (.zip)</div>
+      </a>
+    </div>
+
+    <!-- Instructions Chrome -->
+    <div class="card">
+      <h2>🌐 Installation sur Chrome</h2>
+      <ol class="steps">
+        <li><strong>Téléchargez</strong> le fichier zip ci-dessus et <strong>décompressez-le</strong> dans un dossier</li>
+        <li>Ouvrez Chrome et allez à <code>chrome://extensions/</code></li>
+        <li>Activez le <strong>Mode développeur</strong> (interrupteur en haut à droite)</li>
+        <li>Cliquez sur <strong>« Charger l'extension non empaquetée »</strong></li>
+        <li>Sélectionnez le <strong>dossier décompressé</strong> (celui qui contient manifest.json)</li>
+        <li>L'extension apparaît dans la barre d'outils → cliquez dessus</li>
+        <li>Entrez votre <strong>nom</strong> et cliquez <strong>« J'accepte »</strong></li>
+      </ol>
+    </div>
+
+    <!-- Instructions Edge -->
+    <div class="card">
+      <h2>🔷 Installation sur Edge</h2>
+      <ol class="steps">
+        <li>Même procédure : <code>edge://extensions/</code></li>
+        <li>Activez le <strong>Mode développeur</strong></li>
+        <li>Cliquez <strong>« Charger l'extension non empaquetée »</strong> et sélectionnez le dossier</li>
+      </ol>
+    </div>
+
+    <!-- Navigation privée -->
+    <div class="card">
+      <h2>🔒 Activer en navigation privée</h2>
+      <ol class="steps">
+        <li>Dans <code>chrome://extensions/</code>, cliquez sur <strong>Détails</strong> de Supervision Pro</li>
+        <li>Cochez <strong>« Autoriser en mode navigation privée »</strong></li>
+      </ol>
+      <div class="warning">
+        ⚠️ Cette étape est obligatoire. Sans elle, l'extension ne fonctionne pas en mode incognito/privé.
+      </div>
+    </div>
+
+    <!-- Info -->
+    <div class="card">
+      <div class="info-box">
+        <strong>Rappel :</strong> Cet appareil est professionnel. Les activités de navigation (sites visités, recherches, textes tapés) sont enregistrées. Pour toute activité privée, utilisez votre appareil personnel.
+      </div>
+    </div>
+  </div>
+</body>
+</html>

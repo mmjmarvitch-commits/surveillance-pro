@@ -1,0 +1,1799 @@
+const express = require('express');
+const cors = require('cors');
+const compression = require('compression');
+const path = require('path');
+const fs = require('fs');
+const http = require('http');
+const crypto = require('crypto');
+const archiver = require('archiver');
+const Database = require('better-sqlite3');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const { WebSocketServer } = require('ws');
+const PDFDocument = require('pdfkit');
+
+// ─── Dossier stockage photos ───
+const PHOTOS_DIR = path.join(__dirname, 'photos');
+if (!fs.existsSync(PHOTOS_DIR)) fs.mkdirSync(PHOTOS_DIR, { recursive: true });
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'supervision-pro-secret-change-me';
+const DEVICE_ENCRYPTION_KEY = process.env.DEVICE_ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
+
+// ─── Base de données SQLite ───
+
+const DB_PATH = path.join(__dirname, 'surveillance.db');
+const db = new Database(DB_PATH);
+db.pragma('journal_mode = WAL');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS devices (
+    deviceId TEXT PRIMARY KEY,
+    deviceName TEXT NOT NULL DEFAULT 'Appareil inconnu',
+    userId TEXT,
+    userName TEXT,
+    acceptanceVersion TEXT DEFAULT '1.0',
+    acceptanceDate TEXT,
+    registeredAt TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    deviceId TEXT NOT NULL,
+    type TEXT NOT NULL,
+    payload TEXT DEFAULT '{}',
+    receivedAt TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS admins (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    passwordHash TEXT NOT NULL,
+    createdAt TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS keywords (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    word TEXT NOT NULL,
+    category TEXT DEFAULT 'general',
+    createdAt TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    deviceId TEXT NOT NULL,
+    keyword TEXT NOT NULL,
+    eventType TEXT,
+    context TEXT,
+    url TEXT,
+    createdAt TEXT NOT NULL,
+    seen INTEGER DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS commands (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    deviceId TEXT NOT NULL,
+    type TEXT NOT NULL,
+    payload TEXT DEFAULT '{}',
+    status TEXT DEFAULT 'pending',
+    createdAt TEXT NOT NULL,
+    executedAt TEXT
+  );
+  CREATE TABLE IF NOT EXISTS photos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    deviceId TEXT NOT NULL,
+    commandId INTEGER,
+    filename TEXT NOT NULL,
+    mimeType TEXT DEFAULT 'image/jpeg',
+    sizeBytes INTEGER DEFAULT 0,
+    source TEXT DEFAULT 'auto',
+    sourceApp TEXT DEFAULT '',
+    metadata TEXT DEFAULT '{}',
+    receivedAt TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_events_deviceId ON events(deviceId);
+  CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
+  CREATE INDEX IF NOT EXISTS idx_events_receivedAt ON events(receivedAt);
+  CREATE INDEX IF NOT EXISTS idx_alerts_seen ON alerts(seen);
+  CREATE TABLE IF NOT EXISTS audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    adminId INTEGER,
+    adminUsername TEXT,
+    action TEXT NOT NULL,
+    detail TEXT DEFAULT '',
+    ip TEXT DEFAULT '',
+    userAgent TEXT DEFAULT '',
+    createdAt TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS login_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip TEXT NOT NULL,
+    username TEXT DEFAULT '',
+    success INTEGER DEFAULT 0,
+    createdAt TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS security_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_commands_deviceId ON commands(deviceId);
+  CREATE INDEX IF NOT EXISTS idx_commands_status ON commands(status);
+  CREATE INDEX IF NOT EXISTS idx_photos_deviceId ON photos(deviceId);
+  CREATE INDEX IF NOT EXISTS idx_audit_createdAt ON audit_log(createdAt);
+  CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip);
+  CREATE INDEX IF NOT EXISTS idx_login_attempts_createdAt ON login_attempts(createdAt);
+
+  CREATE TABLE IF NOT EXISTS sync_config (
+    deviceId TEXT PRIMARY KEY,
+    syncIntervalMinutes INTEGER DEFAULT 15,
+    syncOnWifiOnly INTEGER DEFAULT 0,
+    syncOnChargingOnly INTEGER DEFAULT 0,
+    modulesEnabled TEXT DEFAULT '{"location":true,"browser":true,"apps":true,"photos":false,"network":false}',
+    photoQuality REAL DEFAULT 0.5,
+    photoMaxWidth INTEGER DEFAULT 1280,
+    updatedAt TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS consent_texts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    version TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL DEFAULT 'Politique de supervision',
+    body TEXT NOT NULL,
+    createdAt TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS consent_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    deviceId TEXT NOT NULL,
+    userId TEXT,
+    userName TEXT,
+    consentVersion TEXT NOT NULL,
+    consentText TEXT NOT NULL,
+    ipAddress TEXT,
+    userAgent TEXT,
+    signature TEXT DEFAULT '',
+    consentedAt TEXT NOT NULL,
+    revokedAt TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_consent_deviceId ON consent_records(deviceId);
+
+  CREATE TABLE IF NOT EXISTS data_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    deviceId TEXT NOT NULL,
+    type TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',
+    adminNote TEXT DEFAULT '',
+    createdAt TEXT NOT NULL,
+    processedAt TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_data_requests_status ON data_requests(status);
+
+  CREATE INDEX IF NOT EXISTS idx_events_device_time ON events(deviceId, receivedAt);
+  CREATE INDEX IF NOT EXISTS idx_events_type_time ON events(type, receivedAt);
+  CREATE INDEX IF NOT EXISTS idx_alerts_deviceId ON alerts(deviceId);
+  CREATE INDEX IF NOT EXISTS idx_alerts_createdAt ON alerts(createdAt);
+`);
+
+// Migration : ajouter severity aux alertes si elle n'existe pas
+const alertCols = db.prepare("PRAGMA table_info(alerts)").all().map(c => c.name);
+if (!alertCols.includes('severity')) db.exec("ALTER TABLE alerts ADD COLUMN severity TEXT DEFAULT 'warning'");
+if (!alertCols.includes('source')) db.exec("ALTER TABLE alerts ADD COLUMN source TEXT DEFAULT 'keyword'");
+
+// Migration : ajouter consentGiven aux devices si elle n'existe pas
+const deviceCols = db.prepare("PRAGMA table_info(devices)").all().map(c => c.name);
+if (!deviceCols.includes('consentGiven')) db.exec("ALTER TABLE devices ADD COLUMN consentGiven INTEGER DEFAULT 0");
+
+// Insérer le texte de consentement par défaut s'il n'existe pas
+const consentExists = db.prepare('SELECT COUNT(*) as c FROM consent_texts').get().c;
+if (!consentExists) {
+  db.prepare('INSERT INTO consent_texts (version, title, body, createdAt) VALUES (?, ?, ?, ?)').run(
+    '1.0',
+    'Politique de supervision des appareils professionnels',
+    `Dans le cadre de la politique de sécurité de l'entreprise, cet appareil professionnel fait l'objet d'une supervision.\n\nDonnées collectées :\n- Historique de navigation web (URLs visitées, recherches)\n- Applications utilisées (ouverture/fermeture)\n- Localisation GPS de l'appareil\n- Informations techniques (batterie, stockage, modèle)\n- Photos (sur demande ou automatique selon la configuration)\n- Trafic réseau (applications et domaines contactés)\n\nVos droits :\n- Accès : vous pouvez consulter les données collectées via le portail employé\n- Rectification : contactez votre administrateur\n- Suppression : vous pouvez demander l'effacement de vos données\n- Portabilité : vous pouvez demander l'export de vos données\n\nBase légale : intérêt légitime de l'employeur (sécurité du SI) – Article 6.1.f du RGPD.\nDurée de conservation : les données sont conservées pendant la durée du contrat de travail.\n\nEn acceptant, vous reconnaissez avoir été informé(e) de cette politique de supervision.`,
+    new Date().toISOString()
+  );
+}
+
+// Migration : ajouter les colonnes 2FA + sécurité aux admins si elles n'existent pas
+const adminCols = db.prepare("PRAGMA table_info(admins)").all().map(c => c.name);
+if (!adminCols.includes('totpSecret')) db.exec("ALTER TABLE admins ADD COLUMN totpSecret TEXT DEFAULT ''");
+if (!adminCols.includes('totpEnabled')) db.exec("ALTER TABLE admins ADD COLUMN totpEnabled INTEGER DEFAULT 0");
+if (!adminCols.includes('failedAttempts')) db.exec("ALTER TABLE admins ADD COLUMN failedAttempts INTEGER DEFAULT 0");
+if (!adminCols.includes('lockedUntil')) db.exec("ALTER TABLE admins ADD COLUMN lockedUntil TEXT DEFAULT ''");
+if (!adminCols.includes('lastLoginAt')) db.exec("ALTER TABLE admins ADD COLUMN lastLoginAt TEXT DEFAULT ''");
+if (!adminCols.includes('lastLoginIp')) db.exec("ALTER TABLE admins ADD COLUMN lastLoginIp TEXT DEFAULT ''");
+
+// Paramètres de sécurité par défaut
+const defaultSettings = {
+  max_failed_attempts: '5',
+  lockout_duration_minutes: '15',
+  session_timeout_minutes: '60',
+  ip_whitelist: '',
+  require_strong_password: 'true',
+  min_password_length: '8',
+  data_retention_days: '90',
+  offline_threshold_minutes: '30',
+  flood_threshold_per_minute: '60',
+  anomaly_detection_enabled: 'true',
+};
+const upsertSetting = db.prepare('INSERT OR IGNORE INTO security_settings (key, value) VALUES (?, ?)');
+Object.entries(defaultSettings).forEach(([k, v]) => upsertSetting.run(k, v));
+
+function getSetting(key) {
+  const row = db.prepare('SELECT value FROM security_settings WHERE key = ?').get(key);
+  return row ? row.value : defaultSettings[key] || '';
+}
+
+// ─── MOTEUR D'ANALYSE ─────────────────────────────────────────────────────────
+
+// -- État en mémoire par appareil (RAM, pas de requête SQL pour y accéder) --
+const deviceState = new Map();
+
+function getDeviceState(deviceId) {
+  if (!deviceState.has(deviceId)) {
+    deviceState.set(deviceId, {
+      lastSeen: null,
+      lastHeartbeat: null,
+      lastLocation: null,
+      batteryLevel: null,
+      batteryState: null,
+      storageFreeGB: null,
+      riskScore: 0,
+      eventCountLastMinute: 0,
+      eventWindowStart: Date.now(),
+      isOnline: false,
+      alerts24h: 0,
+    });
+  }
+  return deviceState.get(deviceId);
+}
+
+// -- Catégorisation de domaines --
+const DOMAIN_CATEGORIES = {
+  social: ['facebook.com','instagram.com','twitter.com','x.com','tiktok.com','snapchat.com','linkedin.com','reddit.com','pinterest.com','tumblr.com'],
+  streaming: ['youtube.com','netflix.com','twitch.tv','disney.com','primevideo.com','hulu.com','dailymotion.com','vimeo.com','crunchyroll.com','spotify.com'],
+  gaming: ['steampowered.com','epicgames.com','roblox.com','miniclip.com','poki.com','itch.io','kongregate.com','newgrounds.com'],
+  jobSearch: ['indeed.com','linkedin.com/jobs','glassdoor.com','monster.com','welcometothejungle.com','pole-emploi.fr','hellowork.com','apec.fr','cadremploi.fr'],
+  messaging: ['web.whatsapp.com','web.telegram.org','discord.com','slack.com','signal.org','messenger.com'],
+  adult: ['pornhub.com','xvideos.com','xhamster.com','onlyfans.com'],
+  shopping: ['amazon.com','amazon.fr','ebay.com','aliexpress.com','leboncoin.fr','vinted.fr','cdiscount.com'],
+};
+
+function categorizeDomain(url) {
+  if (!url) return null;
+  try {
+    const hostname = new URL(url).hostname.replace('www.', '');
+    for (const [cat, domains] of Object.entries(DOMAIN_CATEGORIES)) {
+      if (domains.some(d => hostname.includes(d))) return cat;
+    }
+  } catch {}
+  return null;
+}
+
+// -- Extraction de données utiles selon le type d'événement --
+function extractEventData(type, payload) {
+  const data = { domain: null, category: null, searchQuery: null, appName: null };
+  if (!payload) return data;
+  if (payload.url) {
+    try {
+      data.domain = new URL(payload.url).hostname.replace('www.', '');
+      data.category = categorizeDomain(payload.url);
+    } catch {}
+  }
+  if (payload.query) data.searchQuery = payload.query;
+  if (payload.appName || payload.bundleId) data.appName = payload.appName || payload.bundleId;
+  return data;
+}
+
+// -- Détection d'anomalies sur un événement --
+function detectAnomalies(deviceId, type, payload, receivedAt) {
+  if (getSetting('anomaly_detection_enabled') !== 'true') return;
+  const state = getDeviceState(deviceId);
+  const now = Date.now();
+
+  // Flood detection
+  if (now - state.eventWindowStart > 60000) {
+    state.eventCountLastMinute = 0;
+    state.eventWindowStart = now;
+  }
+  state.eventCountLastMinute++;
+  const floodThreshold = parseInt(getSetting('flood_threshold_per_minute')) || 60;
+  if (state.eventCountLastMinute === floodThreshold) {
+    createSmartAlert(deviceId, 'flood_detected', 'anomaly', 'critical',
+      `${state.eventCountLastMinute} événements/min (seuil: ${floodThreshold})`, type);
+  }
+
+  // Chute de batterie brutale
+  if (payload.batteryLevel != null && state.batteryLevel != null) {
+    const drop = state.batteryLevel - payload.batteryLevel;
+    if (drop >= 20) {
+      createSmartAlert(deviceId, 'battery_drop', 'anomaly', 'warning',
+        `Batterie: ${state.batteryLevel}% → ${payload.batteryLevel}% (chute de ${drop}%)`, type);
+    }
+  }
+
+  // Saut GPS aberrant
+  if (type === 'location' && payload.latitude && state.lastLocation) {
+    const dist = haversineKm(
+      state.lastLocation.lat, state.lastLocation.lng,
+      payload.latitude, payload.longitude
+    );
+    const timeDiffMin = state.lastLocation.time
+      ? (now - state.lastLocation.time) / 60000
+      : 999;
+    if (dist > 100 && timeDiffMin < 30) {
+      createSmartAlert(deviceId, 'gps_jump', 'anomaly', 'critical',
+        `Saut GPS de ${Math.round(dist)} km en ${Math.round(timeDiffMin)} min`, type);
+    }
+  }
+
+  // Activité hors horaires (entre 00h et 6h)
+  const hour = new Date(receivedAt).getHours();
+  if (hour >= 0 && hour < 6 && !['heartbeat'].includes(type)) {
+    createSmartAlert(deviceId, 'off_hours_activity', 'anomaly', 'info',
+      `Activité à ${hour}h: ${type}`, type);
+  }
+}
+
+// Formule Haversine pour distance GPS
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// -- Mise à jour de l'état en mémoire --
+function updateDeviceState(deviceId, type, payload) {
+  const state = getDeviceState(deviceId);
+  state.lastSeen = Date.now();
+  state.isOnline = true;
+
+  if (payload.batteryLevel != null) state.batteryLevel = payload.batteryLevel;
+  if (payload.batteryState) state.batteryState = payload.batteryState;
+  if (payload.storageFreeGB != null) state.storageFreeGB = payload.storageFreeGB;
+
+  if (type === 'heartbeat' || type === 'device_info') {
+    state.lastHeartbeat = Date.now();
+  }
+  if (type === 'location' && payload.latitude) {
+    state.lastLocation = { lat: payload.latitude, lng: payload.longitude, time: Date.now() };
+  }
+}
+
+// -- Scoring de risque par appareil (0-100) --
+function computeRiskScore(deviceId) {
+  const state = getDeviceState(deviceId);
+  let score = 0;
+
+  // +20 si hors ligne depuis longtemps
+  const offlineMin = parseInt(getSetting('offline_threshold_minutes')) || 30;
+  if (state.lastHeartbeat && (Date.now() - state.lastHeartbeat) > offlineMin * 60000) {
+    score += 20;
+  }
+
+  // +15 par alerte critique dans les 24h
+  const criticals = db.prepare(
+    "SELECT COUNT(*) as c FROM alerts WHERE deviceId = ? AND severity = 'critical' AND createdAt > ?"
+  ).get(deviceId, new Date(Date.now() - 86400000).toISOString()).c;
+  score += Math.min(criticals * 15, 45);
+
+  // +10 par alerte warning dans les 24h
+  const warnings = db.prepare(
+    "SELECT COUNT(*) as c FROM alerts WHERE deviceId = ? AND severity = 'warning' AND createdAt > ?"
+  ).get(deviceId, new Date(Date.now() - 86400000).toISOString()).c;
+  score += Math.min(warnings * 10, 20);
+
+  // +10 si batterie critique
+  if (state.batteryLevel != null && state.batteryLevel < 10) score += 10;
+
+  // +5 si flood détecté récemment
+  if (state.eventCountLastMinute > (parseInt(getSetting('flood_threshold_per_minute')) || 60) * 0.5) {
+    score += 5;
+  }
+
+  state.riskScore = Math.min(score, 100);
+  return state.riskScore;
+}
+
+// -- Créer une alerte intelligente (avec dédoublonnage sur 10 min) --
+function createSmartAlert(deviceId, keyword, source, severity, context, eventType) {
+  const tenMinAgo = new Date(Date.now() - 600000).toISOString();
+  const existing = db.prepare(
+    'SELECT id FROM alerts WHERE deviceId = ? AND keyword = ? AND createdAt > ? LIMIT 1'
+  ).get(deviceId, keyword, tenMinAgo);
+  if (existing) return;
+
+  db.prepare(
+    'INSERT INTO alerts (deviceId, keyword, eventType, context, url, severity, source, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(deviceId, keyword, eventType || '', (context || '').slice(0, 500), '', severity, source, new Date().toISOString());
+  broadcast({ type: 'alert', keyword, deviceId, eventType, severity, source });
+}
+
+// -- Pipeline d'analyse complet (appelé pour chaque événement) --
+function analyzeEvent(deviceId, type, payload, receivedAt) {
+  updateDeviceState(deviceId, type, payload);
+  detectAnomalies(deviceId, type, payload, receivedAt);
+
+  const extracted = extractEventData(type, payload);
+
+  // Alerte si catégorie sensible détectée
+  if (extracted.category && ['adult', 'gaming', 'jobSearch'].includes(extracted.category)) {
+    const severityMap = { adult: 'critical', gaming: 'warning', jobSearch: 'warning' };
+    createSmartAlert(deviceId, `site_${extracted.category}`, 'category', severityMap[extracted.category],
+      `${extracted.domain} (${extracted.category})`, type);
+  }
+
+  // Vérification mots-clés intelligente (sur les bons champs, pas le JSON brut)
+  checkKeywordsSmart(deviceId, type, payload, extracted);
+
+  computeRiskScore(deviceId);
+}
+
+// ─── CACHE EN MÉMOIRE ─────────────────────────────────────────────────────────
+
+const statsCache = { data: null, expiresAt: 0 };
+const STATS_CACHE_TTL = 30000; // 30 secondes
+
+// ─── PREPARED STATEMENTS (exécutés une seule fois) ────────────────────────────
+
+const stmts = {
+  insertEvent: db.prepare('INSERT INTO events (deviceId, type, payload, receivedAt) VALUES (?, ?, ?, ?)'),
+  countDevices: db.prepare('SELECT COUNT(*) as c FROM devices'),
+  countEvents: db.prepare('SELECT COUNT(*) as c FROM events'),
+  onlineDevices: db.prepare('SELECT COUNT(DISTINCT deviceId) as c FROM events WHERE receivedAt > ?'),
+  eventsToday: db.prepare('SELECT COUNT(*) as c FROM events WHERE receivedAt > ?'),
+  urlsToday: db.prepare("SELECT COUNT(*) as c FROM events WHERE type IN ('browser','safari_page','chrome_page') AND receivedAt > ?"),
+  unseenAlerts: db.prepare('SELECT COUNT(*) as c FROM alerts WHERE seen = 0'),
+  countPhotos: db.prepare('SELECT COUNT(*) as c FROM photos'),
+  photosToday: db.prepare('SELECT COUNT(*) as c FROM photos WHERE receivedAt > ?'),
+  autoPhotosToday: db.prepare("SELECT COUNT(*) as c FROM photos WHERE source = 'auto' AND receivedAt > ?"),
+  pendingCommands: db.prepare("SELECT COUNT(*) as c FROM commands WHERE status = 'pending'"),
+};
+
+// Créer l'admin par défaut s'il n'existe pas
+const adminExists = db.prepare('SELECT COUNT(*) as c FROM admins').get().c;
+if (!adminExists) {
+  const hash = bcrypt.hashSync('admin', 10);
+  db.prepare('INSERT INTO admins (username, passwordHash, createdAt) VALUES (?, ?, ?)').run('admin', hash, new Date().toISOString());
+  console.log('Admin par défaut créé : admin / admin (changez le mot de passe !)');
+}
+
+// ─── Middleware ───
+
+app.use(cors());
+app.use(compression());
+app.use('/api/photos/upload', express.json({ limit: '20mb' }));
+app.use('/api/sync', express.json({ limit: '30mb' }));
+app.use(express.json());
+
+// ─── En-têtes de sécurité (coffre-fort) ───
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: https://*.tile.openstreetmap.org; connect-src 'self' ws: wss:; font-src 'self'");
+  next();
+});
+
+// ─── IP Whitelist ───
+app.use('/api', (req, res, next) => {
+  const whitelist = getSetting('ip_whitelist');
+  if (!whitelist) return next();
+  const allowed = whitelist.split(',').map(ip => ip.trim()).filter(Boolean);
+  if (!allowed.length) return next();
+  const clientIp = req.ip || req.connection.remoteAddress || '';
+  const normalizedIp = clientIp.replace('::ffff:', '');
+  if (allowed.includes(normalizedIp) || allowed.includes('127.0.0.1') && (normalizedIp === '127.0.0.1' || normalizedIp === '::1')) {
+    return next();
+  }
+  // Toujours laisser passer les endpoints appareils (register, sync, events, photos/upload, commands/pending, consent, employee)
+  if (['/api/devices/register', '/api/events', '/api/photos/upload', '/api/health', '/api/sync', '/api/consent'].includes(req.path) ||
+      req.path.match(/\/api\/commands\/[^/]+\/pending/) || req.path.match(/\/api\/commands\/[^/]+\/ack/) ||
+      req.path.match(/\/api\/employee\//)) {
+    return next();
+  }
+  auditLog(null, null, 'ip_blocked', `IP ${normalizedIp} bloquée`, normalizedIp, req.get('user-agent'));
+  res.status(403).json({ error: 'Accès refusé – IP non autorisée' });
+});
+
+// ─── Rate Limiting (anti brute-force) ───
+const rateLimitMap = new Map();
+function isRateLimited(ip, maxAttempts = 10, windowMs = 60000) {
+  const now = Date.now();
+  const key = `rl_${ip}`;
+  const entry = rateLimitMap.get(key) || { count: 0, resetAt: now + windowMs };
+  if (now > entry.resetAt) { entry.count = 0; entry.resetAt = now + windowMs; }
+  entry.count++;
+  rateLimitMap.set(key, entry);
+  return entry.count > maxAttempts;
+}
+// Nettoyage périodique
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitMap) { if (now > entry.resetAt) rateLimitMap.delete(key); }
+}, 60000);
+
+// ─── Audit Logging ───
+function auditLog(adminId, adminUsername, action, detail = '', ip = '', userAgent = '') {
+  db.prepare('INSERT INTO audit_log (adminId, adminUsername, action, detail, ip, userAgent, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(adminId, adminUsername, action, detail.slice(0, 1000), ip, (userAgent || '').slice(0, 300), new Date().toISOString());
+}
+
+function getClientIp(req) {
+  return (req.ip || req.connection.remoteAddress || '').replace('::ffff:', '');
+}
+
+// ─── TOTP 2FA (coffre-fort) ───
+function generateTotpSecret() {
+  const buffer = crypto.randomBytes(20);
+  const base32Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let secret = '';
+  for (let i = 0; i < buffer.length; i++) {
+    secret += base32Chars[buffer[i] % 32];
+  }
+  return secret;
+}
+
+function base32Decode(base32) {
+  const base32Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  for (const char of base32.toUpperCase()) {
+    const val = base32Chars.indexOf(char);
+    if (val === -1) continue;
+    bits += val.toString(2).padStart(5, '0');
+  }
+  const bytes = [];
+  for (let i = 0; i + 8 <= bits.length; i += 8) {
+    bytes.push(parseInt(bits.substr(i, 8), 2));
+  }
+  return Buffer.from(bytes);
+}
+
+function generateTotp(secret, timeStep = 30) {
+  const time = Math.floor(Date.now() / 1000 / timeStep);
+  const timeBuffer = Buffer.alloc(8);
+  timeBuffer.writeUInt32BE(0, 0);
+  timeBuffer.writeUInt32BE(time, 4);
+  const key = base32Decode(secret);
+  const hmac = crypto.createHmac('sha1', key).update(timeBuffer).digest();
+  const offset = hmac[hmac.length - 1] & 0x0f;
+  const code = ((hmac[offset] & 0x7f) << 24 | hmac[offset + 1] << 16 | hmac[offset + 2] << 8 | hmac[offset + 3]) % 1000000;
+  return code.toString().padStart(6, '0');
+}
+
+function verifyTotp(secret, inputCode) {
+  // Vérifier le code actuel et le précédent/suivant (tolérance ±30s)
+  for (const offset of [-1, 0, 1]) {
+    const time = Math.floor(Date.now() / 1000 / 30) + offset;
+    const timeBuffer = Buffer.alloc(8);
+    timeBuffer.writeUInt32BE(0, 0);
+    timeBuffer.writeUInt32BE(time, 4);
+    const key = base32Decode(secret);
+    const hmac = crypto.createHmac('sha1', key).update(timeBuffer).digest();
+    const off = hmac[hmac.length - 1] & 0x0f;
+    const code = ((hmac[off] & 0x7f) << 24 | hmac[off + 1] << 16 | hmac[off + 2] << 8 | hmac[off + 3]) % 1000000;
+    if (code.toString().padStart(6, '0') === inputCode) return true;
+  }
+  return false;
+}
+
+// ─── Validation mot de passe fort ───
+function validatePassword(password) {
+  const requireStrong = getSetting('require_strong_password') === 'true';
+  const minLen = parseInt(getSetting('min_password_length')) || 8;
+  if (!password || password.length < minLen) return `Minimum ${minLen} caractères`;
+  if (requireStrong) {
+    if (!/[A-Z]/.test(password)) return 'Au moins une majuscule requise';
+    if (!/[a-z]/.test(password)) return 'Au moins une minuscule requise';
+    if (!/[0-9]/.test(password)) return 'Au moins un chiffre requis';
+    if (!/[^A-Za-z0-9]/.test(password)) return 'Au moins un caractère spécial requis (!@#$%...)';
+  }
+  return null;
+}
+
+const server = http.createServer(app);
+
+// ─── WebSocket ───
+
+const wss = new WebSocketServer({ server, path: '/ws' });
+const wsClients = new Set();
+
+wss.on('connection', (ws) => {
+  ws.isAlive = true;
+  wsClients.add(ws);
+  ws.on('pong', () => { ws.isAlive = true; });
+  ws.on('close', () => wsClients.delete(ws));
+});
+
+function broadcast(data) {
+  const msg = JSON.stringify(data);
+  wsClients.forEach(ws => { if (ws.readyState === 1) ws.send(msg); });
+}
+
+// ─── Auth middleware ───
+
+function authRequired(req, res, next) {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Token requis' });
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.admin = decoded;
+    // Vérifier que l'admin existe toujours et n'est pas verrouillé
+    const admin = db.prepare('SELECT id, username, lockedUntil FROM admins WHERE id = ?').get(decoded.id);
+    if (!admin) return res.status(401).json({ error: 'Compte supprimé' });
+    if (admin.lockedUntil && new Date(admin.lockedUntil) > new Date()) {
+      return res.status(423).json({ error: 'Compte verrouillé' });
+    }
+    next();
+  } catch { res.status(401).json({ error: 'Token invalide ou expiré' }); }
+}
+
+// ─── Device Auth middleware ───
+
+function deviceAuthRequired(req, res, next) {
+  const token = req.headers['x-device-token'];
+  if (!token) return res.status(401).json({ error: 'Token appareil requis (x-device-token)' });
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded.type !== 'device') throw new Error('Not a device token');
+    // Vérifier que l'appareil existe toujours
+    const device = db.prepare('SELECT deviceId, consentGiven FROM devices WHERE deviceId = ?').get(decoded.deviceId);
+    if (!device) return res.status(401).json({ error: 'Appareil non enregistré' });
+    req.deviceId = decoded.deviceId;
+    req.deviceConsent = !!device.consentGiven;
+    next();
+  } catch (e) { res.status(401).json({ error: 'Token appareil invalide ou expiré' }); }
+}
+
+// ─── Payload Encryption (AES-256-GCM) ───
+
+function getDeviceKey(deviceId) {
+  // Derive a per-device key from the master key + deviceId
+  return crypto.createHash('sha256').update(DEVICE_ENCRYPTION_KEY + deviceId).digest();
+}
+
+function decryptPayload(encryptedData, deviceId) {
+  try {
+    const { iv, data, tag } = encryptedData;
+    const key = getDeviceKey(deviceId);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'hex'));
+    decipher.setAuthTag(Buffer.from(tag, 'hex'));
+    const decrypted = decipher.update(data, 'hex', 'utf8') + decipher.final('utf8');
+    return JSON.parse(decrypted);
+  } catch (e) {
+    return null;
+  }
+}
+
+function encryptPayload(payload, deviceId) {
+  const key = getDeviceKey(deviceId);
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const data = cipher.update(JSON.stringify(payload), 'utf8', 'hex') + cipher.final('hex');
+  const tag = cipher.getAuthTag().toString('hex');
+  return { iv: iv.toString('hex'), data, tag };
+}
+
+// Helper: get sync config for a device
+function getSyncConfig(deviceId) {
+  const config = db.prepare('SELECT * FROM sync_config WHERE deviceId = ?').get(deviceId);
+  if (config) {
+    try { config.modulesEnabled = JSON.parse(config.modulesEnabled); } catch (e) {}
+    return config;
+  }
+  // Default config
+  return {
+    deviceId,
+    syncIntervalMinutes: 15,
+    syncOnWifiOnly: 0,
+    syncOnChargingOnly: 0,
+    modulesEnabled: { location: true, browser: true, apps: true, photos: false, network: false },
+    photoQuality: 0.5,
+    photoMaxWidth: 1280,
+  };
+}
+
+// Helper: get latest consent text
+function getConsentText(version) {
+  if (version) {
+    const row = db.prepare('SELECT * FROM consent_texts WHERE version = ?').get(version);
+    if (row) return row;
+  }
+  return db.prepare('SELECT * FROM consent_texts ORDER BY createdAt DESC LIMIT 1').get();
+}
+
+// Helper: get latest consent for a device
+function getLatestConsent(deviceId) {
+  return db.prepare('SELECT * FROM consent_records WHERE deviceId = ? AND revokedAt IS NULL ORDER BY consentedAt DESC LIMIT 1').get(deviceId);
+}
+
+// Helper: get device stats for employee portal
+function getDeviceStats(deviceId) {
+  const totalEvents = db.prepare('SELECT COUNT(*) as c FROM events WHERE deviceId = ?').get(deviceId).c;
+  const totalPhotos = db.prepare('SELECT COUNT(*) as c FROM photos WHERE deviceId = ?').get(deviceId).c;
+  const lastEvent = db.prepare('SELECT receivedAt FROM events WHERE deviceId = ? ORDER BY receivedAt DESC LIMIT 1').get(deviceId);
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const eventsToday = db.prepare('SELECT COUNT(*) as c FROM events WHERE deviceId = ? AND receivedAt > ?').get(deviceId, todayStart.toISOString()).c;
+  const typeCounts = db.prepare('SELECT type, COUNT(*) as c FROM events WHERE deviceId = ? GROUP BY type').all(deviceId);
+  return {
+    totalEvents,
+    totalPhotos,
+    eventsToday,
+    lastSync: lastEvent ? lastEvent.receivedAt : null,
+    typeCounts: Object.fromEntries(typeCounts.map(t => [t.type, t.c])),
+  };
+}
+
+// ─── Auth routes (sécurisées) ───
+
+app.post('/api/auth/login', (req, res) => {
+  const { username, password, totpCode } = req.body;
+  const ip = getClientIp(req);
+  const ua = req.get('user-agent') || '';
+
+  // Rate limiting
+  if (isRateLimited(ip, 10, 60000)) {
+    auditLog(null, username, 'rate_limited', `IP ${ip} rate limited`, ip, ua);
+    return res.status(429).json({ error: 'Trop de tentatives. Réessayez dans 1 minute.' });
+  }
+
+  const admin = db.prepare('SELECT * FROM admins WHERE username = ?').get(username);
+
+  // Vérifier le verrouillage du compte
+  if (admin && admin.lockedUntil && new Date(admin.lockedUntil) > new Date()) {
+    const remaining = Math.ceil((new Date(admin.lockedUntil) - new Date()) / 60000);
+    db.prepare('INSERT INTO login_attempts (ip, username, success, createdAt) VALUES (?, ?, 0, ?)').run(ip, username, new Date().toISOString());
+    auditLog(admin.id, username, 'login_locked', `Compte verrouillé, ${remaining} min restantes`, ip, ua);
+    return res.status(423).json({ error: `Compte verrouillé. Réessayez dans ${remaining} minute(s).` });
+  }
+
+  // Vérifier identifiants
+  if (!admin || !bcrypt.compareSync(password, admin.passwordHash)) {
+    db.prepare('INSERT INTO login_attempts (ip, username, success, createdAt) VALUES (?, ?, 0, ?)').run(ip, username || '?', new Date().toISOString());
+
+    // Incrémenter les tentatives échouées
+    if (admin) {
+      const newFailed = (admin.failedAttempts || 0) + 1;
+      const maxAttempts = parseInt(getSetting('max_failed_attempts')) || 5;
+      if (newFailed >= maxAttempts) {
+        const lockMinutes = parseInt(getSetting('lockout_duration_minutes')) || 15;
+        const lockedUntil = new Date(Date.now() + lockMinutes * 60000).toISOString();
+        db.prepare('UPDATE admins SET failedAttempts = ?, lockedUntil = ? WHERE id = ?').run(newFailed, lockedUntil, admin.id);
+        auditLog(admin.id, username, 'account_locked', `Verrouillé après ${newFailed} tentatives (${lockMinutes} min)`, ip, ua);
+        return res.status(423).json({ error: `Compte verrouillé pour ${lockMinutes} minutes après ${maxAttempts} tentatives échouées.` });
+      } else {
+        db.prepare('UPDATE admins SET failedAttempts = ? WHERE id = ?').run(newFailed, admin.id);
+      }
+    }
+    auditLog(admin?.id, username, 'login_failed', 'Identifiants incorrects', ip, ua);
+    return res.status(401).json({ error: 'Identifiants incorrects' });
+  }
+
+  // Vérifier 2FA si activé
+  if (admin.totpEnabled) {
+    if (!totpCode) {
+      return res.json({ ok: false, requires2FA: true, message: 'Code 2FA requis' });
+    }
+    if (!verifyTotp(admin.totpSecret, totpCode)) {
+      db.prepare('INSERT INTO login_attempts (ip, username, success, createdAt) VALUES (?, ?, 0, ?)').run(ip, username, new Date().toISOString());
+      auditLog(admin.id, username, '2fa_failed', 'Code 2FA invalide', ip, ua);
+      return res.status(401).json({ error: 'Code 2FA invalide' });
+    }
+  }
+
+  // Connexion réussie
+  db.prepare('UPDATE admins SET failedAttempts = 0, lockedUntil = \'\', lastLoginAt = ?, lastLoginIp = ? WHERE id = ?')
+    .run(new Date().toISOString(), ip, admin.id);
+  db.prepare('INSERT INTO login_attempts (ip, username, success, createdAt) VALUES (?, ?, 1, ?)').run(ip, username, new Date().toISOString());
+
+  const sessionTimeout = parseInt(getSetting('session_timeout_minutes')) || 60;
+  const token = jwt.sign({ id: admin.id, username: admin.username }, JWT_SECRET, { expiresIn: `${sessionTimeout}m` });
+
+  auditLog(admin.id, username, 'login_success', `Connexion réussie depuis ${ip}`, ip, ua);
+  res.json({ ok: true, token, username: admin.username, totpEnabled: !!admin.totpEnabled, sessionTimeout });
+});
+
+// ─── 2FA Setup ───
+
+app.post('/api/auth/2fa/setup', authRequired, (req, res) => {
+  const ip = getClientIp(req);
+  const admin = db.prepare('SELECT * FROM admins WHERE id = ?').get(req.admin.id);
+  if (admin.totpEnabled) return res.status(400).json({ error: '2FA déjà activé' });
+
+  const secret = generateTotpSecret();
+  db.prepare('UPDATE admins SET totpSecret = ? WHERE id = ?').run(secret, req.admin.id);
+
+  // URI pour l'app authenticator (Google Authenticator, Authy, etc.)
+  const otpauthUrl = `otpauth://totp/SupervisionPro:${admin.username}?secret=${secret}&issuer=SupervisionPro&digits=6&period=30`;
+
+  auditLog(req.admin.id, req.admin.username, '2fa_setup_started', 'Génération secret 2FA', ip, req.get('user-agent'));
+  res.json({ ok: true, secret, otpauthUrl });
+});
+
+app.post('/api/auth/2fa/verify', authRequired, (req, res) => {
+  const { code } = req.body;
+  const ip = getClientIp(req);
+  const admin = db.prepare('SELECT * FROM admins WHERE id = ?').get(req.admin.id);
+  if (!admin.totpSecret) return res.status(400).json({ error: 'Aucun secret 2FA généré' });
+  if (!code || !verifyTotp(admin.totpSecret, code)) {
+    return res.status(400).json({ error: 'Code invalide. Vérifiez votre app authenticator.' });
+  }
+  db.prepare('UPDATE admins SET totpEnabled = 1 WHERE id = ?').run(req.admin.id);
+  auditLog(req.admin.id, req.admin.username, '2fa_enabled', '2FA activé avec succès', ip, req.get('user-agent'));
+  res.json({ ok: true, message: '2FA activé avec succès' });
+});
+
+app.post('/api/auth/2fa/disable', authRequired, (req, res) => {
+  const { password } = req.body;
+  const ip = getClientIp(req);
+  const admin = db.prepare('SELECT * FROM admins WHERE id = ?').get(req.admin.id);
+  if (!bcrypt.compareSync(password, admin.passwordHash)) {
+    return res.status(401).json({ error: 'Mot de passe incorrect' });
+  }
+  db.prepare("UPDATE admins SET totpEnabled = 0, totpSecret = '' WHERE id = ?").run(req.admin.id);
+  auditLog(req.admin.id, req.admin.username, '2fa_disabled', '2FA désactivé', ip, req.get('user-agent'));
+  res.json({ ok: true, message: '2FA désactivé' });
+});
+
+// ─── Changement de mot de passe (sécurisé) ───
+
+app.post('/api/auth/change-password', authRequired, (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  const ip = getClientIp(req);
+  const admin = db.prepare('SELECT * FROM admins WHERE id = ?').get(req.admin.id);
+
+  // Vérifier l'ancien mot de passe
+  if (!bcrypt.compareSync(currentPassword || '', admin.passwordHash)) {
+    auditLog(req.admin.id, req.admin.username, 'password_change_failed', 'Ancien mot de passe incorrect', ip, req.get('user-agent'));
+    return res.status(401).json({ error: 'Mot de passe actuel incorrect' });
+  }
+
+  // Valider le nouveau mot de passe
+  const validationError = validatePassword(newPassword);
+  if (validationError) return res.status(400).json({ error: validationError });
+
+  const hash = bcrypt.hashSync(newPassword, 12);
+  db.prepare('UPDATE admins SET passwordHash = ? WHERE id = ?').run(hash, req.admin.id);
+  auditLog(req.admin.id, req.admin.username, 'password_changed', 'Mot de passe changé', ip, req.get('user-agent'));
+  res.json({ ok: true });
+});
+
+// ─── Journal d'audit (admin) ───
+
+app.get('/api/audit-log', authRequired, (req, res) => {
+  const { limit, action } = req.query;
+  let sql = 'SELECT * FROM audit_log';
+  const params = [];
+  if (action) { sql += ' WHERE action = ?'; params.push(action); }
+  sql += ' ORDER BY createdAt DESC LIMIT ?';
+  params.push(Math.min(parseInt(limit) || 100, 500));
+  auditLog(req.admin.id, req.admin.username, 'view_audit_log', '', getClientIp(req), req.get('user-agent'));
+  res.json(db.prepare(sql).all(...params));
+});
+
+// ─── Paramètres de sécurité (admin) ───
+
+app.get('/api/security/settings', authRequired, (req, res) => {
+  const settings = db.prepare('SELECT * FROM security_settings').all();
+  const admin = db.prepare('SELECT id, username, totpEnabled, lastLoginAt, lastLoginIp, createdAt FROM admins WHERE id = ?').get(req.admin.id);
+  res.json({ settings: Object.fromEntries(settings.map(s => [s.key, s.value])), admin });
+});
+
+app.post('/api/security/settings', authRequired, (req, res) => {
+  const { settings } = req.body;
+  const ip = getClientIp(req);
+  const allowed = ['max_failed_attempts', 'lockout_duration_minutes', 'session_timeout_minutes', 'ip_whitelist', 'require_strong_password', 'min_password_length', 'data_retention_days', 'offline_threshold_minutes', 'flood_threshold_per_minute', 'anomaly_detection_enabled'];
+  const update = db.prepare('INSERT OR REPLACE INTO security_settings (key, value) VALUES (?, ?)');
+  let changed = [];
+  Object.entries(settings || {}).forEach(([k, v]) => {
+    if (allowed.includes(k)) { update.run(k, String(v)); changed.push(k); }
+  });
+  auditLog(req.admin.id, req.admin.username, 'security_settings_changed', `Modifié : ${changed.join(', ')}`, ip, req.get('user-agent'));
+  res.json({ ok: true });
+});
+
+// ─── Statut de sécurité ───
+
+app.get('/api/security/status', authRequired, (req, res) => {
+  const recentFailed = db.prepare("SELECT COUNT(*) as c FROM login_attempts WHERE success = 0 AND createdAt > ?")
+    .get(new Date(Date.now() - 86400000).toISOString()).c;
+  const recentSuccess = db.prepare("SELECT COUNT(*) as c FROM login_attempts WHERE success = 1 AND createdAt > ?")
+    .get(new Date(Date.now() - 86400000).toISOString()).c;
+  const admin = db.prepare('SELECT totpEnabled FROM admins WHERE id = ?').get(req.admin.id);
+  const totalAuditEntries = db.prepare('SELECT COUNT(*) as c FROM audit_log').get().c;
+  res.json({
+    totpEnabled: !!admin.totpEnabled,
+    recentFailedLogins24h: recentFailed,
+    recentSuccessLogins24h: recentSuccess,
+    totalAuditEntries,
+    ipWhitelist: getSetting('ip_whitelist'),
+    sessionTimeout: getSetting('session_timeout_minutes'),
+    strongPassword: getSetting('require_strong_password') === 'true',
+    dataRetentionDays: getSetting('data_retention_days'),
+    offlineThresholdMinutes: getSetting('offline_threshold_minutes'),
+    anomalyDetectionEnabled: getSetting('anomaly_detection_enabled') === 'true',
+    activeDevices: deviceState.size,
+  });
+});
+
+// ─── Mots-clés surveillés ───
+
+app.get('/api/keywords', authRequired, (req, res) => {
+  res.json(db.prepare('SELECT * FROM keywords ORDER BY createdAt DESC').all());
+});
+
+app.post('/api/keywords', authRequired, (req, res) => {
+  const { word, category } = req.body;
+  if (!word) return res.status(400).json({ error: 'Mot-clé requis' });
+  db.prepare('INSERT INTO keywords (word, category, createdAt) VALUES (?, ?, ?)').run(word.toLowerCase(), category || 'general', new Date().toISOString());
+  res.status(201).json({ ok: true });
+});
+
+app.delete('/api/keywords/:id', authRequired, (req, res) => {
+  db.prepare('DELETE FROM keywords WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ─── Alertes ───
+
+app.get('/api/alerts', authRequired, (req, res) => {
+  const { unseen } = req.query;
+  let sql = 'SELECT * FROM alerts';
+  if (unseen === 'true') sql += ' WHERE seen = 0';
+  sql += ' ORDER BY createdAt DESC LIMIT 200';
+  res.json(db.prepare(sql).all());
+});
+
+app.post('/api/alerts/mark-seen', authRequired, (req, res) => {
+  db.prepare('UPDATE alerts SET seen = 1 WHERE seen = 0').run();
+  res.json({ ok: true });
+});
+
+// Vérification intelligente des mots-clés (cherche dans les bons champs, pas le JSON brut)
+function checkKeywordsSmart(deviceId, type, payload, extracted) {
+  const keywords = db.prepare('SELECT * FROM keywords').all();
+  if (!keywords.length) return;
+
+  const searchableTexts = [];
+  if (payload.url) searchableTexts.push(payload.url.toLowerCase());
+  if (payload.query) searchableTexts.push(payload.query.toLowerCase());
+  if (payload.text) searchableTexts.push(payload.text.toLowerCase());
+  if (payload.title) searchableTexts.push(payload.title.toLowerCase());
+  if (payload.appName) searchableTexts.push(payload.appName.toLowerCase());
+  if (payload.host) searchableTexts.push(payload.host.toLowerCase());
+  if (extracted && extracted.domain) searchableTexts.push(extracted.domain.toLowerCase());
+  // Fallback : champs restants pour ne rien rater
+  if (!searchableTexts.length) {
+    searchableTexts.push(JSON.stringify(payload).toLowerCase());
+  }
+
+  const combined = searchableTexts.join(' ');
+  keywords.forEach(kw => {
+    if (combined.includes(kw.word.toLowerCase())) {
+      createSmartAlert(
+        deviceId, kw.word, 'keyword', 'warning',
+        combined.slice(0, 500),
+        type
+      );
+    }
+  });
+}
+
+// ─── Enregistrement appareil ───
+
+app.post('/api/devices/register', (req, res) => {
+  const { deviceId, deviceName, userId, userName, acceptanceVersion, acceptanceDate } = req.body;
+  if (!deviceId) return res.status(400).json({ error: 'deviceId requis' });
+
+  // Generate a long-lived device token
+  const deviceToken = jwt.sign({ deviceId, type: 'device' }, JWT_SECRET, { expiresIn: '365d' });
+
+  const existing = db.prepare('SELECT * FROM devices WHERE deviceId = ?').get(deviceId);
+  if (existing) {
+    // Return existing device with a fresh token + consent text
+    const consentText = getConsentText();
+    return res.json({ ok: true, device: existing, deviceToken, consentText: consentText || null });
+  }
+
+  const device = {
+    deviceId, deviceName: deviceName || 'Appareil inconnu',
+    userId: userId || null, userName: userName || null,
+    acceptanceVersion: acceptanceVersion || '1.0',
+    acceptanceDate: acceptanceDate || new Date().toISOString(),
+    registeredAt: new Date().toISOString(),
+  };
+  db.prepare('INSERT INTO devices (deviceId, deviceName, userId, userName, acceptanceVersion, acceptanceDate, registeredAt) VALUES (@deviceId, @deviceName, @userId, @userName, @acceptanceVersion, @acceptanceDate, @registeredAt)').run(device);
+
+  // Create default sync config for this device
+  db.prepare('INSERT OR IGNORE INTO sync_config (deviceId, updatedAt) VALUES (?, ?)').run(deviceId, new Date().toISOString());
+
+  broadcast({ type: 'device_registered', device });
+  const consentText = getConsentText();
+  res.status(201).json({ ok: true, device, deviceToken, consentText: consentText || null });
+});
+
+// ─── Envoi d'événements ───
+
+app.post('/api/events', deviceAuthRequired, (req, res) => {
+  const deviceId = req.deviceId;
+  const { type, payload } = req.body;
+  if (!type) return res.status(400).json({ error: 'type requis' });
+  if (!req.deviceConsent) return res.status(403).json({ error: 'Consentement requis avant la collecte de données' });
+  const receivedAt = new Date().toISOString();
+  const payloadStr = JSON.stringify(payload || {});
+  const result = stmts.insertEvent.run(deviceId, type, payloadStr, receivedAt);
+  const event = { id: result.lastInsertRowid, deviceId, type, payload: payload || {}, receivedAt };
+  broadcast({ type: 'new_event', event });
+  statsCache.expiresAt = 0;
+  analyzeEvent(deviceId, type, payload || {}, receivedAt);
+  res.status(201).json({ ok: true, eventId: result.lastInsertRowid });
+});
+
+// ─── Liste appareils ───
+
+app.get('/api/devices', authRequired, (req, res) => {
+  res.json(db.prepare('SELECT * FROM devices ORDER BY registeredAt DESC').all());
+});
+
+// ─── Événements ───
+
+app.get('/api/events', authRequired, (req, res) => {
+  const { deviceId, type, limit } = req.query;
+  let sql = 'SELECT * FROM events WHERE 1=1';
+  const params = [];
+  if (deviceId) { sql += ' AND deviceId = ?'; params.push(deviceId); }
+  if (type) { sql += ' AND type = ?'; params.push(type); }
+  sql += ' ORDER BY receivedAt DESC LIMIT ?';
+  params.push(Math.min(parseInt(limit, 10) || 500, 2000));
+  const events = db.prepare(sql).all(...params);
+  res.json(events.map(e => ({ ...e, payload: JSON.parse(e.payload || '{}') })));
+});
+
+// ─── Stats ───
+
+app.get('/api/stats', authRequired, (req, res) => {
+  const now = Date.now();
+  if (statsCache.data && now < statsCache.expiresAt) {
+    return res.json(statsCache.data);
+  }
+
+  const oneHourAgo = new Date(now - 3600000).toISOString();
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const todayISO = todayStart.toISOString();
+
+  const data = {
+    totalDevices: stmts.countDevices.get().c,
+    totalEvents: stmts.countEvents.get().c,
+    onlineDevices: stmts.onlineDevices.get(oneHourAgo).c,
+    eventsToday: stmts.eventsToday.get(todayISO).c,
+    urlsToday: stmts.urlsToday.get(todayISO).c,
+    unseenAlerts: stmts.unseenAlerts.get().c,
+    totalPhotos: stmts.countPhotos.get().c,
+    photosToday: stmts.photosToday.get(todayISO).c,
+    autoPhotosToday: stmts.autoPhotosToday.get(todayISO).c,
+    pendingCommands: stmts.pendingCommands.get().c,
+    // Nouvelles stats intelligentes
+    deviceScores: Object.fromEntries(
+      [...deviceState.entries()].map(([id, s]) => [id, {
+        riskScore: s.riskScore,
+        isOnline: s.isOnline,
+        batteryLevel: s.batteryLevel,
+        lastSeen: s.lastSeen ? new Date(s.lastSeen).toISOString() : null,
+      }])
+    ),
+  };
+
+  statsCache.data = data;
+  statsCache.expiresAt = now + STATS_CACHE_TTL;
+  res.json(data);
+});
+
+// ─── Score de risque d'un appareil ───
+
+app.get('/api/devices/:deviceId/score', authRequired, (req, res) => {
+  const did = req.params.deviceId;
+  const score = computeRiskScore(did);
+  const state = getDeviceState(did);
+  const recentAlerts = db.prepare(
+    'SELECT keyword, severity, source, context, createdAt FROM alerts WHERE deviceId = ? ORDER BY createdAt DESC LIMIT 10'
+  ).all(did);
+  res.json({
+    deviceId: did,
+    riskScore: score,
+    isOnline: state.isOnline,
+    batteryLevel: state.batteryLevel,
+    lastSeen: state.lastSeen ? new Date(state.lastSeen).toISOString() : null,
+    lastLocation: state.lastLocation,
+    recentAlerts,
+  });
+});
+
+// ─── Timeline (événements par heure pour un appareil) ───
+
+app.get('/api/timeline/:deviceId', authRequired, (req, res) => {
+  const { date } = req.query;
+  const d = date || new Date().toISOString().slice(0, 10);
+  const events = db.prepare(`SELECT * FROM events WHERE deviceId = ? AND receivedAt >= ? AND receivedAt < ? ORDER BY receivedAt ASC`)
+    .all(req.params.deviceId, `${d}T00:00:00`, `${d}T23:59:59`);
+  res.json(events.map(e => ({ ...e, payload: JSON.parse(e.payload || '{}') })));
+});
+
+// ─── Positions GPS ───
+
+app.get('/api/locations/latest', authRequired, (req, res) => {
+  const rows = db.prepare(`
+    SELECT e.deviceId, e.payload, e.receivedAt FROM events e
+    INNER JOIN (SELECT deviceId, MAX(receivedAt) as maxDate FROM events WHERE type = 'location' GROUP BY deviceId) latest
+    ON e.deviceId = latest.deviceId AND e.receivedAt = latest.maxDate WHERE e.type = 'location'
+  `).all();
+  res.json(rows.map(r => ({ ...r, payload: JSON.parse(r.payload || '{}') })));
+});
+
+// ─── Recherche ───
+
+app.get('/api/search', authRequired, (req, res) => {
+  const { q, deviceId } = req.query;
+  if (!q) return res.status(400).json({ error: 'q requis' });
+  let sql = 'SELECT * FROM events WHERE payload LIKE ?';
+  const params = [`%${q}%`];
+  if (deviceId) { sql += ' AND deviceId = ?'; params.push(deviceId); }
+  sql += ' ORDER BY receivedAt DESC LIMIT 100';
+  res.json(db.prepare(sql).all(...params).map(r => ({ ...r, payload: JSON.parse(r.payload || '{}') })));
+});
+
+// ─── Rapport PDF ───
+
+app.get('/api/reports/:deviceId', authRequired, (req, res) => {
+  const { from, to } = req.query;
+  const device = db.prepare('SELECT * FROM devices WHERE deviceId = ?').get(req.params.deviceId);
+  if (!device) return res.status(404).json({ error: 'Appareil non trouvé' });
+  const dateFrom = from || new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+  const dateTo = to || new Date().toISOString().slice(0, 10);
+  const events = db.prepare('SELECT * FROM events WHERE deviceId = ? AND receivedAt >= ? AND receivedAt <= ? ORDER BY receivedAt ASC')
+    .all(req.params.deviceId, `${dateFrom}T00:00:00`, `${dateTo}T23:59:59`);
+  const deviceAlerts = db.prepare('SELECT * FROM alerts WHERE deviceId = ? AND createdAt >= ? AND createdAt <= ? ORDER BY createdAt ASC')
+    .all(req.params.deviceId, `${dateFrom}T00:00:00`, `${dateTo}T23:59:59`);
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="rapport-${device.deviceName}-${dateFrom}-${dateTo}.pdf"`);
+
+  const doc = new PDFDocument({ margin: 40, size: 'A4' });
+  doc.pipe(res);
+  doc.fontSize(20).text('Supervision Pro – Rapport', { align: 'center' });
+  doc.moveDown(0.5);
+  doc.fontSize(12).text(`Appareil : ${device.deviceName}`, { align: 'center' });
+  doc.text(`Période : ${dateFrom} au ${dateTo}`, { align: 'center' });
+  doc.text(`ID : ${device.deviceId}`, { align: 'center' });
+  doc.moveDown();
+  doc.fontSize(14).text(`Résumé`);
+  doc.fontSize(10);
+  doc.text(`Total événements : ${events.length}`);
+  doc.text(`Alertes mots-clés : ${deviceAlerts.length}`);
+  const browsers = events.filter(e => ['browser', 'safari_page', 'chrome_page'].includes(e.type));
+  doc.text(`Pages visitées : ${browsers.length}`);
+  const searches = events.filter(e => ['safari_search', 'chrome_search'].includes(e.type));
+  doc.text(`Recherches : ${searches.length}`);
+  doc.moveDown();
+
+  if (deviceAlerts.length) {
+    doc.fontSize(14).text('Alertes mots-clés');
+    doc.fontSize(9);
+    deviceAlerts.forEach(a => {
+      doc.text(`[${a.createdAt.slice(0, 16).replace('T', ' ')}] "${a.keyword}" – ${a.eventType} – ${a.url || ''}`);
+    });
+    doc.moveDown();
+  }
+
+  doc.fontSize(14).text('Événements détaillés');
+  doc.fontSize(8);
+  events.slice(0, 500).forEach(e => {
+    const p = JSON.parse(e.payload || '{}');
+    const time = e.receivedAt.slice(0, 16).replace('T', ' ');
+    let detail = '';
+    if (p.url) detail = p.url;
+    else if (p.query) detail = `Recherche: "${p.query}"`;
+    else if (p.text) detail = `Texte: "${p.text}"`;
+    else if (p.latitude) detail = `GPS: ${p.latitude}, ${p.longitude}`;
+    doc.text(`${time} | ${e.type} | ${detail}`, { lineBreak: true });
+  });
+
+  doc.end();
+});
+
+// ─── Commandes à distance (take_photo, etc.) ───
+
+// Admin envoie une commande à un appareil
+app.post('/api/commands/:deviceId', authRequired, (req, res) => {
+  const { type, payload } = req.body;
+  if (!type) return res.status(400).json({ error: 'type requis (ex: take_photo)' });
+  const createdAt = new Date().toISOString();
+  const payloadStr = JSON.stringify(payload || {});
+  const result = db.prepare('INSERT INTO commands (deviceId, type, payload, status, createdAt) VALUES (?, ?, ?, ?, ?)')
+    .run(req.params.deviceId, type, payloadStr, 'pending', createdAt);
+  const command = { id: result.lastInsertRowid, deviceId: req.params.deviceId, type, payload: payload || {}, status: 'pending', createdAt };
+  broadcast({ type: 'command_sent', command });
+  res.status(201).json({ ok: true, command });
+});
+
+// Appareil récupère ses commandes en attente
+app.get('/api/commands/:deviceId/pending', deviceAuthRequired, (req, res) => {
+  const commands = db.prepare('SELECT * FROM commands WHERE deviceId = ? AND status = ? ORDER BY createdAt ASC')
+    .all(req.deviceId, 'pending');
+  res.json(commands.map(c => ({ ...c, payload: JSON.parse(c.payload || '{}') })));
+});
+
+// Appareil acquitte une commande
+app.post('/api/commands/:commandId/ack', deviceAuthRequired, (req, res) => {
+  const { status } = req.body;
+  const newStatus = status || 'executed';
+  db.prepare('UPDATE commands SET status = ?, executedAt = ? WHERE id = ?')
+    .run(newStatus, new Date().toISOString(), req.params.commandId);
+  const cmd = db.prepare('SELECT * FROM commands WHERE id = ?').get(req.params.commandId);
+  if (cmd) broadcast({ type: 'command_ack', command: { ...cmd, payload: JSON.parse(cmd.payload || '{}') } });
+  res.json({ ok: true });
+});
+
+// Liste des commandes d'un appareil
+app.get('/api/commands/:deviceId/history', authRequired, (req, res) => {
+  const commands = db.prepare('SELECT * FROM commands WHERE deviceId = ? ORDER BY createdAt DESC LIMIT 50')
+    .all(req.params.deviceId);
+  res.json(commands.map(c => ({ ...c, payload: JSON.parse(c.payload || '{}') })));
+});
+
+// ─── Photos ───
+
+// Appareil envoie une photo (base64)
+// source: 'auto' (interception automatique), 'command' (demandée par admin), 'gallery' (depuis galerie)
+// sourceApp: 'whatsapp', 'telegram', 'camera', 'snapchat', 'signal', 'instagram', 'messenger', etc.
+app.post('/api/photos/upload', deviceAuthRequired, (req, res) => {
+  const deviceId = req.deviceId;
+  const { commandId, imageBase64, mimeType, metadata, source, sourceApp } = req.body;
+  if (!imageBase64) return res.status(400).json({ error: 'imageBase64 requis' });
+  if (!req.deviceConsent) return res.status(403).json({ error: 'Consentement requis avant la collecte de données' });
+
+  const mime = mimeType || 'image/jpeg';
+  const ext = mime.includes('png') ? 'png' : mime.includes('gif') ? 'gif' : 'jpg';
+  const receivedAt = new Date().toISOString();
+  const photoSource = source || (commandId ? 'command' : 'auto');
+  const app = sourceApp || '';
+  const filename = `photo_${photoSource}_${deviceId}_${Date.now()}.${ext}`;
+
+  // Décoder et sauvegarder le fichier
+  const buffer = Buffer.from(imageBase64, 'base64');
+  const filePath = path.join(PHOTOS_DIR, filename);
+  fs.writeFileSync(filePath, buffer);
+
+  const sizeBytes = buffer.length;
+  const metadataStr = JSON.stringify(metadata || {});
+
+  const result = db.prepare('INSERT INTO photos (deviceId, commandId, filename, mimeType, sizeBytes, source, sourceApp, metadata, receivedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(deviceId, commandId || null, filename, mime, sizeBytes, photoSource, app, metadataStr, receivedAt);
+
+  // Marquer la commande comme exécutée si commandId fourni
+  if (commandId) {
+    db.prepare('UPDATE commands SET status = ?, executedAt = ? WHERE id = ?')
+      .run('executed', receivedAt, commandId);
+  }
+
+  // Créer aussi un événement pour la timeline
+  const eventPayload = { photoId: result.lastInsertRowid, source: photoSource, sourceApp: app, sizeBytes };
+  const eventPayloadStr = JSON.stringify(eventPayload);
+  db.prepare('INSERT INTO events (deviceId, type, payload, receivedAt) VALUES (?, ?, ?, ?)')
+    .run(deviceId, 'photo_captured', eventPayloadStr, receivedAt);
+
+  const photo = { id: result.lastInsertRowid, deviceId, commandId, filename, mimeType: mime, sizeBytes, source: photoSource, sourceApp: app, metadata: metadata || {}, receivedAt };
+  broadcast({ type: 'new_photo', photo });
+
+  res.status(201).json({ ok: true, photo });
+});
+
+// Liste des photos (admin)
+app.get('/api/photos', authRequired, (req, res) => {
+  const { deviceId, source, sourceApp, limit } = req.query;
+  let sql = 'SELECT * FROM photos WHERE 1=1';
+  const params = [];
+  if (deviceId) { sql += ' AND deviceId = ?'; params.push(deviceId); }
+  if (source) { sql += ' AND source = ?'; params.push(source); }
+  if (sourceApp) { sql += ' AND sourceApp = ?'; params.push(sourceApp); }
+  sql += ' ORDER BY receivedAt DESC LIMIT ?';
+  params.push(Math.min(parseInt(limit, 10) || 100, 500));
+  const photos = db.prepare(sql).all(...params);
+  res.json(photos.map(p => ({ ...p, metadata: JSON.parse(p.metadata || '{}') })));
+});
+
+// Servir l'image d'une photo
+app.get('/api/photos/:id/image', authRequired, (req, res) => {
+  const photo = db.prepare('SELECT * FROM photos WHERE id = ?').get(req.params.id);
+  if (!photo) return res.status(404).json({ error: 'Photo non trouvée' });
+  const filePath = path.join(PHOTOS_DIR, photo.filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Fichier non trouvé' });
+  res.setHeader('Content-Type', photo.mimeType);
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  fs.createReadStream(filePath).pipe(res);
+});
+
+// Supprimer une photo (admin)
+app.delete('/api/photos/:id', authRequired, (req, res) => {
+  const photo = db.prepare('SELECT * FROM photos WHERE id = ?').get(req.params.id);
+  if (!photo) return res.status(404).json({ error: 'Photo non trouvée' });
+  const filePath = path.join(PHOTOS_DIR, photo.filename);
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  db.prepare('DELETE FROM photos WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// Servir le thumbnail d'une photo (petite taille pour galerie)
+app.get('/api/photos/:id/thumb', authRequired, (req, res) => {
+  const photo = db.prepare('SELECT * FROM photos WHERE id = ?').get(req.params.id);
+  if (!photo) return res.status(404).json({ error: 'Photo non trouvée' });
+  const filePath = path.join(PHOTOS_DIR, photo.filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Fichier non trouvé' });
+  // On sert l'image originale (le redimensionnement se fait côté CSS)
+  res.setHeader('Content-Type', photo.mimeType);
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  fs.createReadStream(filePath).pipe(res);
+});
+
+// ─── Sync Batch (endpoint unique pour l'agent mobile) ───
+
+app.post('/api/sync', deviceAuthRequired, (req, res) => {
+  const deviceId = req.deviceId;
+  const { events, photos, encrypted } = req.body;
+
+  // Si le consentement n'est pas donné, ne pas accepter les données
+  if (!req.deviceConsent) {
+    const consentText = getConsentText();
+    const syncConfig = getSyncConfig(deviceId);
+    return res.json({
+      ok: false,
+      error: 'consent_required',
+      consentText: consentText || null,
+      commands: [],
+      syncConfig,
+      serverTime: new Date().toISOString(),
+    });
+  }
+
+  const receivedAt = new Date().toISOString();
+  let insertedEvents = 0;
+  let insertedPhotos = 0;
+
+  // Décrypter si le payload est chiffré
+  let eventsList = events || [];
+  let photosList = photos || [];
+  if (encrypted) {
+    if (events && events.iv) {
+      eventsList = decryptPayload(events, deviceId) || [];
+    }
+    if (photos && photos.iv) {
+      photosList = decryptPayload(photos, deviceId) || [];
+    }
+  }
+
+  // 1. Insérer tous les événements en une seule transaction + analyse
+  const batchEvents = [];
+  const insertEventsTransaction = db.transaction((evts) => {
+    for (const evt of evts) {
+      if (!evt.type) continue;
+      const payloadStr = JSON.stringify(evt.payload || {});
+      const eventTime = evt.timestamp || receivedAt;
+      const result = stmts.insertEvent.run(deviceId, evt.type, payloadStr, eventTime);
+      batchEvents.push({ id: result.lastInsertRowid, deviceId, type: evt.type, payload: evt.payload || {}, receivedAt: eventTime });
+      analyzeEvent(deviceId, evt.type, evt.payload || {}, eventTime);
+      insertedEvents++;
+    }
+  });
+
+  try {
+    insertEventsTransaction(eventsList);
+    if (batchEvents.length) {
+      broadcast({ type: 'batch_events', events: batchEvents, count: batchEvents.length });
+    }
+    statsCache.expiresAt = 0;
+  } catch (e) { console.error('Sync events error:', e.message); }
+
+  // 2. Traiter les photos
+  for (const photo of photosList) {
+    if (!photo.imageBase64) continue;
+    try {
+      const mime = photo.mimeType || 'image/jpeg';
+      const ext = mime.includes('png') ? 'png' : mime.includes('gif') ? 'gif' : 'jpg';
+      const photoSource = photo.source || 'auto';
+      const srcApp = photo.sourceApp || '';
+      const filename = `photo_${photoSource}_${deviceId}_${Date.now()}_${insertedPhotos}.${ext}`;
+      const buffer = Buffer.from(photo.imageBase64, 'base64');
+      const filePath = path.join(PHOTOS_DIR, filename);
+      fs.writeFileSync(filePath, buffer);
+      const sizeBytes = buffer.length;
+      const metadataStr = JSON.stringify(photo.metadata || {});
+      const result = db.prepare('INSERT INTO photos (deviceId, commandId, filename, mimeType, sizeBytes, source, sourceApp, metadata, receivedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(deviceId, photo.commandId || null, filename, mime, sizeBytes, photoSource, srcApp, metadataStr, receivedAt);
+      if (photo.commandId) {
+        db.prepare('UPDATE commands SET status = ?, executedAt = ? WHERE id = ?').run('executed', receivedAt, photo.commandId);
+      }
+      const eventPayload = { photoId: result.lastInsertRowid, source: photoSource, sourceApp: srcApp, sizeBytes };
+      db.prepare('INSERT INTO events (deviceId, type, payload, receivedAt) VALUES (?, ?, ?, ?)').run(deviceId, 'photo_captured', JSON.stringify(eventPayload), receivedAt);
+      const photoObj = { id: result.lastInsertRowid, deviceId, filename, source: photoSource, sourceApp: srcApp, receivedAt };
+      broadcast({ type: 'new_photo', photo: photoObj });
+      insertedPhotos++;
+    } catch (e) { console.error('Sync photo error:', e.message); }
+  }
+
+  // 3. Retourner les commandes en attente (plus besoin de polling séparé)
+  const pendingCommands = db.prepare('SELECT * FROM commands WHERE deviceId = ? AND status = ? ORDER BY createdAt ASC')
+    .all(deviceId, 'pending')
+    .map(c => ({ ...c, payload: JSON.parse(c.payload || '{}') }));
+
+  // 4. Retourner la config de sync
+  const syncConfig = getSyncConfig(deviceId);
+
+  res.json({
+    ok: true,
+    insertedEvents,
+    insertedPhotos,
+    commands: pendingCommands,
+    syncConfig,
+    serverTime: new Date().toISOString(),
+  });
+});
+
+// ─── Sync Config (admin) ───
+
+app.get('/api/sync-config/:deviceId', authRequired, (req, res) => {
+  const config = getSyncConfig(req.params.deviceId);
+  res.json(config);
+});
+
+app.post('/api/sync-config/:deviceId', authRequired, (req, res) => {
+  const { syncIntervalMinutes, syncOnWifiOnly, syncOnChargingOnly, modulesEnabled, photoQuality, photoMaxWidth } = req.body;
+  const deviceId = req.params.deviceId;
+  const modulesStr = typeof modulesEnabled === 'object' ? JSON.stringify(modulesEnabled) : (modulesEnabled || '{}');
+
+  db.prepare(`INSERT INTO sync_config (deviceId, syncIntervalMinutes, syncOnWifiOnly, syncOnChargingOnly, modulesEnabled, photoQuality, photoMaxWidth, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(deviceId) DO UPDATE SET
+      syncIntervalMinutes = excluded.syncIntervalMinutes,
+      syncOnWifiOnly = excluded.syncOnWifiOnly,
+      syncOnChargingOnly = excluded.syncOnChargingOnly,
+      modulesEnabled = excluded.modulesEnabled,
+      photoQuality = excluded.photoQuality,
+      photoMaxWidth = excluded.photoMaxWidth,
+      updatedAt = excluded.updatedAt
+  `).run(
+    deviceId,
+    syncIntervalMinutes ?? 15,
+    syncOnWifiOnly ? 1 : 0,
+    syncOnChargingOnly ? 1 : 0,
+    modulesStr,
+    photoQuality ?? 0.5,
+    photoMaxWidth ?? 1280,
+    new Date().toISOString()
+  );
+
+  auditLog(req.admin.id, req.admin.username, 'sync_config_changed', `Config sync modifiée pour ${deviceId}`, getClientIp(req), req.get('user-agent'));
+  res.json({ ok: true, config: getSyncConfig(deviceId) });
+});
+
+// ─── Consentement ───
+
+app.post('/api/consent', deviceAuthRequired, (req, res) => {
+  const { userId, userName, consentVersion, signature } = req.body;
+  const deviceId = req.deviceId;
+  const ip = getClientIp(req);
+  const ua = req.get('user-agent') || '';
+
+  // Récupérer le texte de consentement
+  const consentTextObj = getConsentText(consentVersion);
+  if (!consentTextObj) return res.status(400).json({ error: 'Version de consentement introuvable' });
+
+  // Vérifier s'il y a déjà un consentement actif
+  const existing = getLatestConsent(deviceId);
+  if (existing && existing.consentVersion === consentTextObj.version) {
+    return res.json({ ok: true, message: 'Consentement déjà enregistré', consent: existing });
+  }
+
+  // Révoquer l'ancien consentement s'il existe
+  if (existing) {
+    db.prepare('UPDATE consent_records SET revokedAt = ? WHERE id = ?').run(new Date().toISOString(), existing.id);
+  }
+
+  // Enregistrer le nouveau consentement
+  const result = db.prepare('INSERT INTO consent_records (deviceId, userId, userName, consentVersion, consentText, ipAddress, userAgent, signature, consentedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(deviceId, userId || null, userName || null, consentTextObj.version, consentTextObj.body, ip, ua, signature || '', new Date().toISOString());
+
+  // Activer la supervision
+  db.prepare('UPDATE devices SET consentGiven = 1 WHERE deviceId = ?').run(deviceId);
+
+  auditLog(null, null, 'consent_given', `Consentement v${consentTextObj.version} par ${userName || userId || deviceId}`, ip, ua);
+  broadcast({ type: 'consent_given', deviceId, version: consentTextObj.version });
+
+  res.json({ ok: true, consentId: result.lastInsertRowid });
+});
+
+// Récupérer le texte de consentement actuel (public pour l'agent)
+app.get('/api/consent/text', (req, res) => {
+  const ct = getConsentText();
+  if (!ct) return res.status(404).json({ error: 'Aucun texte de consentement configuré' });
+  res.json(ct);
+});
+
+// Admin: liste des consentements
+app.get('/api/consent/records', authRequired, (req, res) => {
+  const { deviceId } = req.query;
+  let sql = 'SELECT cr.*, d.deviceName FROM consent_records cr LEFT JOIN devices d ON cr.deviceId = d.deviceId';
+  const params = [];
+  if (deviceId) { sql += ' WHERE cr.deviceId = ?'; params.push(deviceId); }
+  sql += ' ORDER BY cr.consentedAt DESC LIMIT 200';
+  res.json(db.prepare(sql).all(...params));
+});
+
+// Admin: gérer les textes de consentement
+app.get('/api/consent/texts', authRequired, (req, res) => {
+  res.json(db.prepare('SELECT * FROM consent_texts ORDER BY createdAt DESC').all());
+});
+
+app.post('/api/consent/texts', authRequired, (req, res) => {
+  const { version, title, body } = req.body;
+  if (!version || !body) return res.status(400).json({ error: 'version et body requis' });
+  try {
+    db.prepare('INSERT INTO consent_texts (version, title, body, createdAt) VALUES (?, ?, ?, ?)')
+      .run(version, title || 'Politique de supervision', body, new Date().toISOString());
+    auditLog(req.admin.id, req.admin.username, 'consent_text_created', `Version ${version} créée`, getClientIp(req), req.get('user-agent'));
+    res.status(201).json({ ok: true });
+  } catch (e) {
+    if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Cette version existe déjà' });
+    throw e;
+  }
+});
+
+// ─── Portail Employé ───
+
+app.get('/api/employee/:deviceId/status', deviceAuthRequired, (req, res) => {
+  if (req.deviceId !== req.params.deviceId) return res.status(403).json({ error: 'Accès refusé' });
+  const deviceId = req.params.deviceId;
+  const device = db.prepare('SELECT deviceId, deviceName, userName, registeredAt, consentGiven FROM devices WHERE deviceId = ?').get(deviceId);
+  if (!device) return res.status(404).json({ error: 'Appareil non trouvé' });
+  const config = getSyncConfig(deviceId);
+  const consent = getLatestConsent(deviceId);
+  const stats = getDeviceStats(deviceId);
+  const consentText = getConsentText();
+  res.json({
+    device,
+    config: {
+      syncIntervalMinutes: config.syncIntervalMinutes,
+      modulesEnabled: config.modulesEnabled,
+    },
+    consent: consent ? {
+      version: consent.consentVersion,
+      consentedAt: consent.consentedAt,
+      userName: consent.userName,
+    } : null,
+    stats,
+    currentConsentVersion: consentText ? consentText.version : null,
+    privacyPolicyUrl: '/employee',
+  });
+});
+
+// ─── Demandes RGPD (employé) ───
+
+app.post('/api/employee/:deviceId/data-request', deviceAuthRequired, (req, res) => {
+  if (req.deviceId !== req.params.deviceId) return res.status(403).json({ error: 'Accès refusé' });
+  const { type } = req.body;
+  if (!['export', 'delete'].includes(type)) return res.status(400).json({ error: 'type doit être "export" ou "delete"' });
+
+  // Vérifier qu'il n'y a pas déjà une demande en attente
+  const pending = db.prepare("SELECT COUNT(*) as c FROM data_requests WHERE deviceId = ? AND status = 'pending'").get(req.params.deviceId).c;
+  if (pending > 0) return res.status(409).json({ error: 'Une demande est déjà en cours de traitement' });
+
+  db.prepare('INSERT INTO data_requests (deviceId, type, status, createdAt) VALUES (?, ?, ?, ?)')
+    .run(req.params.deviceId, type, 'pending', new Date().toISOString());
+
+  auditLog(null, null, 'data_request', `Demande ${type} pour ${req.params.deviceId}`, getClientIp(req), req.get('user-agent'));
+  broadcast({ type: 'data_request', deviceId: req.params.deviceId, requestType: type });
+
+  res.json({ ok: true, message: type === 'export' ? 'Demande d\'export enregistrée. L\'administrateur la traitera prochainement.' : 'Demande de suppression enregistrée. L\'administrateur la traitera prochainement.' });
+});
+
+// Admin: liste des demandes RGPD
+app.get('/api/data-requests', authRequired, (req, res) => {
+  const { status } = req.query;
+  let sql = 'SELECT dr.*, d.deviceName, d.userName FROM data_requests dr LEFT JOIN devices d ON dr.deviceId = d.deviceId';
+  const params = [];
+  if (status) { sql += ' WHERE dr.status = ?'; params.push(status); }
+  sql += ' ORDER BY dr.createdAt DESC LIMIT 100';
+  res.json(db.prepare(sql).all(...params));
+});
+
+// Admin: traiter une demande RGPD
+app.post('/api/data-requests/:id/process', authRequired, (req, res) => {
+  const { action, adminNote } = req.body;
+  if (!['approve', 'reject'].includes(action)) return res.status(400).json({ error: 'action doit être "approve" ou "reject"' });
+
+  const request = db.prepare('SELECT * FROM data_requests WHERE id = ?').get(req.params.id);
+  if (!request) return res.status(404).json({ error: 'Demande non trouvée' });
+  if (request.status !== 'pending') return res.status(400).json({ error: 'Demande déjà traitée' });
+
+  const newStatus = action === 'approve' ? 'approved' : 'rejected';
+  db.prepare('UPDATE data_requests SET status = ?, adminNote = ?, processedAt = ? WHERE id = ?')
+    .run(newStatus, adminNote || '', new Date().toISOString(), req.params.id);
+
+  // Si suppression approuvée, supprimer les données de l'appareil
+  if (action === 'approve' && request.type === 'delete') {
+    const deviceId = request.deviceId;
+    // Supprimer les événements
+    db.prepare('DELETE FROM events WHERE deviceId = ?').run(deviceId);
+    // Supprimer les photos (fichiers + DB)
+    const devicePhotos = db.prepare('SELECT filename FROM photos WHERE deviceId = ?').all(deviceId);
+    devicePhotos.forEach(p => {
+      const fp = path.join(PHOTOS_DIR, p.filename);
+      if (fs.existsSync(fp)) fs.unlinkSync(fp);
+    });
+    db.prepare('DELETE FROM photos WHERE deviceId = ?').run(deviceId);
+    // Supprimer les alertes
+    db.prepare('DELETE FROM alerts WHERE deviceId = ?').run(deviceId);
+    // Révoquer le consentement
+    db.prepare('UPDATE consent_records SET revokedAt = ? WHERE deviceId = ? AND revokedAt IS NULL').run(new Date().toISOString(), deviceId);
+    db.prepare('UPDATE devices SET consentGiven = 0 WHERE deviceId = ?').run(deviceId);
+
+    auditLog(req.admin.id, req.admin.username, 'data_deleted', `Données supprimées pour ${deviceId} (demande RGPD #${req.params.id})`, getClientIp(req), req.get('user-agent'));
+  }
+
+  auditLog(req.admin.id, req.admin.username, 'data_request_processed', `Demande #${req.params.id} ${newStatus} (${request.type})`, getClientIp(req), req.get('user-agent'));
+  res.json({ ok: true, status: newStatus });
+});
+
+// ─── Santé ───
+
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, service: 'supervision-pro-api', db: 'sqlite' });
+});
+
+// ─── Téléchargement extension Chrome ───
+
+app.get('/download/extension', (req, res) => {
+  const extensionDir = path.join(__dirname, 'extension');
+  if (!fs.existsSync(extensionDir)) return res.status(404).send('Extension non trouvée.');
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', 'attachment; filename="SupervisionPro-Extension.zip"');
+  const archive = archiver('zip', { zlib: { level: 9 } });
+  archive.on('error', (err) => res.status(500).send(err.message));
+  archive.pipe(res);
+  archive.directory(extensionDir, 'SupervisionPro-Extension');
+  archive.finalize();
+});
+
+// ─── Dashboard (fichiers statiques) ───
+
+app.use(express.static(path.join(__dirname, '..', 'dashboard')));
+
+// ─── WATCHDOG – Détection appareils hors ligne ───────────────────────────────
+
+function runWatchdog() {
+  const offlineMin = parseInt(getSetting('offline_threshold_minutes')) || 30;
+  const threshold = offlineMin * 60000;
+  const now = Date.now();
+
+  // Charger les appareils enregistrés
+  const devices = db.prepare('SELECT deviceId, deviceName FROM devices').all();
+  let offlineCount = 0;
+
+  for (const dev of devices) {
+    const state = getDeviceState(dev.deviceId);
+    if (state.lastSeen && (now - state.lastSeen) > threshold) {
+      if (state.isOnline) {
+        state.isOnline = false;
+        createSmartAlert(dev.deviceId, 'device_offline', 'watchdog', 'warning',
+          `${dev.deviceName || dev.deviceId} hors ligne depuis ${Math.round((now - state.lastSeen) / 60000)} min`, 'watchdog');
+        offlineCount++;
+      }
+    }
+  }
+
+  if (offlineCount > 0) {
+    broadcast({ type: 'watchdog', offlineCount, timestamp: new Date().toISOString() });
+  }
+}
+
+// Exécuter le watchdog toutes les 2 minutes
+setInterval(runWatchdog, 120000);
+
+// ─── NETTOYAGE AUTOMATIQUE DES DONNÉES ───────────────────────────────────────
+
+function runDataCleanup() {
+  const retentionDays = parseInt(getSetting('data_retention_days')) || 90;
+  const cutoff = new Date(Date.now() - retentionDays * 86400000).toISOString();
+
+  const deletedEvents = db.prepare('DELETE FROM events WHERE receivedAt < ?').run(cutoff).changes;
+  const deletedAlerts = db.prepare('DELETE FROM alerts WHERE createdAt < ?').run(cutoff).changes;
+  const deletedAttempts = db.prepare('DELETE FROM login_attempts WHERE createdAt < ?').run(cutoff).changes;
+
+  // Supprimer les anciennes photos (fichiers + DB)
+  const oldPhotos = db.prepare('SELECT id, filename FROM photos WHERE receivedAt < ?').all(cutoff);
+  for (const p of oldPhotos) {
+    const fp = path.join(PHOTOS_DIR, p.filename);
+    if (fs.existsSync(fp)) fs.unlinkSync(fp);
+  }
+  const deletedPhotos = oldPhotos.length;
+  if (deletedPhotos) {
+    db.prepare('DELETE FROM photos WHERE receivedAt < ?').run(cutoff);
+  }
+
+  // Nettoyer les vieux audit logs (garder 1 an)
+  const auditCutoff = new Date(Date.now() - 365 * 86400000).toISOString();
+  db.prepare('DELETE FROM audit_log WHERE createdAt < ?').run(auditCutoff);
+
+  const total = deletedEvents + deletedAlerts + deletedPhotos + deletedAttempts;
+  if (total > 0) {
+    console.log(`[Cleanup] Supprimé : ${deletedEvents} événements, ${deletedAlerts} alertes, ${deletedPhotos} photos, ${deletedAttempts} tentatives (rétention: ${retentionDays}j)`);
+    auditLog(null, 'system', 'data_cleanup', `${total} entrées supprimées (rétention: ${retentionDays}j)`);
+    statsCache.expiresAt = 0;
+  }
+}
+
+// Exécuter le nettoyage toutes les 24h (et une première fois 30s après le démarrage)
+setTimeout(runDataCleanup, 30000);
+setInterval(runDataCleanup, 86400000);
+
+// ─── WEBSOCKET PING/PONG ─────────────────────────────────────────────────────
+
+setInterval(() => {
+  wss.clients.forEach(ws => {
+    if (ws.isAlive === false) {
+      wsClients.delete(ws);
+      return ws.terminate();
+    }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 30000);
+
+// ─── Démarrage ───
+
+// Initialiser l'état des appareils depuis la base
+(function initDeviceStates() {
+  const devices = db.prepare('SELECT deviceId FROM devices').all();
+  for (const dev of devices) {
+    const lastEvent = db.prepare('SELECT receivedAt FROM events WHERE deviceId = ? ORDER BY receivedAt DESC LIMIT 1').get(dev.deviceId);
+    const lastLoc = db.prepare("SELECT payload, receivedAt FROM events WHERE deviceId = ? AND type = 'location' ORDER BY receivedAt DESC LIMIT 1").get(dev.deviceId);
+    const lastHb = db.prepare("SELECT payload, receivedAt FROM events WHERE deviceId = ? AND type IN ('heartbeat','device_info') ORDER BY receivedAt DESC LIMIT 1").get(dev.deviceId);
+
+    const state = getDeviceState(dev.deviceId);
+    if (lastEvent) {
+      state.lastSeen = new Date(lastEvent.receivedAt).getTime();
+      const offlineMin = parseInt(getSetting('offline_threshold_minutes')) || 30;
+      state.isOnline = (Date.now() - state.lastSeen) < offlineMin * 60000;
+    }
+    if (lastHb) {
+      try {
+        const p = JSON.parse(lastHb.payload);
+        if (p.batteryLevel != null) state.batteryLevel = p.batteryLevel;
+        state.lastHeartbeat = new Date(lastHb.receivedAt).getTime();
+      } catch {}
+    }
+    if (lastLoc) {
+      try {
+        const p = JSON.parse(lastLoc.payload);
+        if (p.latitude) state.lastLocation = { lat: p.latitude, lng: p.longitude, time: new Date(lastLoc.receivedAt).getTime() };
+      } catch {}
+    }
+    computeRiskScore(dev.deviceId);
+  }
+  console.log(`  [Engine] ${devices.length} appareils chargés en mémoire`);
+})();
+
+server.listen(PORT, () => {
+  console.log(`\n  Supervision Pro – Portail Entreprise`);
+  console.log(`  ─────────────────────────────────────`);
+  console.log(`  Dashboard  : http://localhost:${PORT}`);
+  console.log(`  Employé    : http://localhost:${PORT}/employee.html`);
+  console.log(`  API        : http://localhost:${PORT}/api`);
+  console.log(`  WebSocket  : ws://localhost:${PORT}/ws`);
+  console.log(`  Admin      : admin / admin`);
+  console.log(`  [Engine] Analyse, watchdog, nettoyage actifs\n`);
+});
+
+process.on('SIGINT', () => { db.close(); process.exit(0); });
+process.on('SIGTERM', () => { db.close(); process.exit(0); });
