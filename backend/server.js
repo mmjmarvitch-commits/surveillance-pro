@@ -1667,7 +1667,11 @@ app.get('/download/extension', (req, res) => {
 
 // ─── Dashboard (fichiers statiques) ───
 
-app.use(express.static(path.join(__dirname, '..', 'dashboard')));
+// En Docker: dashboard est dans ./dashboard/, en dev: dans ../dashboard/
+const dashboardPath = fs.existsSync(path.join(__dirname, 'dashboard'))
+  ? path.join(__dirname, 'dashboard')
+  : path.join(__dirname, '..', 'dashboard');
+app.use(express.static(dashboardPath));
 
 // ─── WATCHDOG – Détection appareils hors ligne ───────────────────────────────
 
