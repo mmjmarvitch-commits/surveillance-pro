@@ -171,6 +171,50 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
 /* EMPLOYEE PORTAL LINK */
 .nav-item .alert-badge{margin-left:auto}
 
+/* MESSAGE TABS */
+.msg-tabs{display:flex;gap:4px;margin-bottom:1rem;border-bottom:2px solid var(--border);padding-bottom:0}
+.msg-tab{background:none;border:none;color:var(--text-muted);padding:0.5rem 1rem;cursor:pointer;font-size:0.85rem;font-weight:500;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s}
+.msg-tab:hover{color:var(--text)}
+.msg-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.msg-panel{display:none}
+.msg-panel.active{display:block}
+
+/* CONVERSATION BUBBLES */
+.conv-group{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;margin-bottom:0.75rem}
+.conv-header{display:flex;align-items:center;gap:8px;margin-bottom:0.75rem;padding-bottom:0.5rem;border-bottom:1px solid var(--border)}
+.conv-app-icon{font-size:1.2rem}
+.conv-app-name{font-weight:600;font-size:0.85rem}
+.conv-contact{font-size:0.85rem;color:var(--text)}
+.conv-count{font-size:0.7rem;color:var(--text-dim);margin-left:auto}
+.conv-msg{padding:0.4rem 0;font-size:0.82rem;border-bottom:1px solid rgba(255,255,255,.03)}
+.conv-msg:last-child{border-bottom:none}
+.conv-msg-text{color:var(--text);line-height:1.4}
+.conv-msg-time{font-size:0.65rem;color:var(--text-dim);margin-top:2px}
+.conv-msg-sender{font-weight:600;color:var(--accent);font-size:0.75rem}
+
+/* KEYSTROKE DISPLAY */
+.typed-block{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0.75rem 1rem;margin-bottom:0.5rem}
+.typed-app{font-size:0.75rem;color:var(--text-muted);margin-bottom:4px}
+.typed-text{font-family:ui-monospace,monospace;font-size:0.85rem;color:var(--text);background:var(--surface2);padding:8px 10px;border-radius:6px;word-break:break-all;line-height:1.5}
+.typed-time{font-size:0.65rem;color:var(--text-dim);margin-top:4px;text-align:right}
+
+/* CALL LOG */
+.call-row{display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0;border-bottom:1px solid var(--border)}
+.call-row:last-child{border-bottom:none}
+.call-icon{font-size:1.1rem;width:28px;text-align:center}
+.call-info{flex:1}
+.call-number{font-weight:500;font-size:0.85rem}
+.call-contact{font-size:0.75rem;color:var(--text-muted)}
+.call-meta{text-align:right}
+.call-duration{font-size:0.8rem;font-weight:500}
+.call-time{font-size:0.65rem;color:var(--text-dim)}
+
+/* APP USAGE */
+.app-row{display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0;border-bottom:1px solid var(--border);font-size:0.82rem}
+.app-row:last-child{border-bottom:none}
+.app-name{flex:1;font-weight:500}
+.app-time-ago{font-size:0.7rem;color:var(--text-dim)}
+
 /* ANDROID EVENT BADGES */
 .event-badge.notification_message{background:#1a3a1e;color:#86efac;font-weight:700}
 .event-badge.keystroke{background:#3a2e1e;color:#fde047;font-weight:700}

