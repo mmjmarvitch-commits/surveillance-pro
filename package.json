@@ -1,0 +1,8 @@
+{
+  "name": "surveillance-pro",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "cd backend && npm ci",
+    "start": "cd backend && node server.js"
+  }
+}
