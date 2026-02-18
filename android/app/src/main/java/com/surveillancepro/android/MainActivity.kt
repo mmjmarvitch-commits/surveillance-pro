@@ -252,25 +252,16 @@ class MainActivity : ComponentActivity() {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Text("Telephone professionnel", fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Cet appareil est configure pour un usage professionnel.",
-                    fontSize = 14.sp, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-
                 if (!allEnabled) {
-                    Spacer(Modifier.height(24.dp))
                     Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0))) {
                         Text(
-                            "Configuration requise. Appuyez sur \u2699\uFE0F en haut a droite.",
+                            "Configuration requise. Appuyez sur \u2699\uFE0F",
                             modifier = Modifier.padding(12.dp), fontSize = 13.sp, color = Color(0xFFE65100), textAlign = TextAlign.Center
                         )
                     }
+                } else {
+                    Text("Supervision Pro", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-
-                Spacer(Modifier.height(32.dp))
-                Text("v1.0", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
