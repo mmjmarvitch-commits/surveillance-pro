@@ -178,6 +178,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
 .event-badge.app_focus{background:#1e2e3a;color:#7dd3fc}
 .event-badge.apps_installed{background:#1e3a3a;color:#5eead4}
 .event-badge.chrome_download{background:#3a1e2e;color:#fca5a5}
+.event-badge.phone_call{background:#1e3a1e;color:#86efac;font-weight:700}
+.event-badge.device_boot{background:#3a3a1e;color:#fde047}
 
 /* ALERT SEVERITY BADGES */
 .severity-critical{color:#ef4444;font-weight:700}

