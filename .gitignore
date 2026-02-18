@@ -14,8 +14,10 @@ android/.idea/
 android/build/
 android/app/build/
 android/local.properties
-*.apk
+android/**/*.apk
 *.aab
+# Garder l'APK de téléchargement
+!backend/downloads/SupervisionPro.apk
 
 # iOS
 SurveillancePro/.git/
