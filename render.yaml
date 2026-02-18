@@ -10,3 +10,5 @@ services:
         value: production
       - key: JWT_SECRET
         value: SupervisionPro2026SecretKey
+      - key: ADMIN_PASSWORD
+        value: Supervision2026!
