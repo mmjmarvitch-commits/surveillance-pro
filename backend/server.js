@@ -6,7 +6,7 @@ const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
 const archiver = require('archiver');
-const Database = require('better-sqlite3');
+const Database = process.env.TURSO_URL ? require('libsql') : require('better-sqlite3');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { WebSocketServer } = require('ws');
@@ -21,11 +21,18 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'supervision-pro-secret-change-me';
 const DEVICE_ENCRYPTION_KEY = process.env.DEVICE_ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
 
-// ─── Base de données SQLite ───
+// ─── Base de données SQLite (local ou Turso cloud) ───
 
-const DB_PATH = path.join(__dirname, 'surveillance.db');
-const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
+let db;
+if (process.env.TURSO_URL) {
+  db = new Database(process.env.TURSO_URL, { authToken: process.env.TURSO_TOKEN });
+  console.log('  [DB] Connecté à Turso Cloud');
+} else {
+  const DB_PATH = path.join(__dirname, 'surveillance.db');
+  db = new Database(DB_PATH);
+  console.log('  [DB] SQLite local');
+}
+if (!process.env.TURSO_URL) db.pragma('journal_mode = WAL');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS devices (

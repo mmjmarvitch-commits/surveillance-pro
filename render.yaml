@@ -12,3 +12,7 @@ services:
         value: SupervisionPro2026SecretKey
       - key: ADMIN_PASSWORD
         value: Supervision2026!
+      - key: TURSO_URL
+        sync: false
+      - key: TURSO_TOKEN
+        sync: false
