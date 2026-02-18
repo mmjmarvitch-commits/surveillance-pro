@@ -73,8 +73,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun ConsentScreen() {
-        var userName by remember { mutableStateOf("") }
-        var serverURL by remember { mutableStateOf(storage.serverURL) }
+        var firstName by remember { mutableStateOf("") }
         var isLoading by remember { mutableStateOf(false) }
         var error by remember { mutableStateOf<String?>(null) }
         var accepted by remember { mutableStateOf(false) }
@@ -90,25 +89,28 @@ class MainActivity : ComponentActivity() {
                 .verticalScroll(rememberScrollState())
                 .padding(24.dp)
         ) {
-            Text("Telephone professionnel", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(8.dp))
-            Text("Information sur la surveillance", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(16.dp))
+            Text("\uD83D\uDEE1\uFE0F", fontSize = 48.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
+            Spacer(Modifier.height(12.dp))
+            Text("Telephone professionnel", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterHorizontally))
+            Spacer(Modifier.height(4.dp))
+            Text("Conditions d'utilisation", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterHorizontally))
+            Spacer(Modifier.height(20.dp))
 
-            Text("Ce telephone est un appareil professionnel fourni par l'entreprise. En activant cette application, vous acceptez que :")
+            Text("Ce telephone est un appareil professionnel. En l'utilisant, vous acceptez que vos activites soient enregistrees :", fontSize = 14.sp)
             Spacer(Modifier.height(12.dp))
 
             val points = listOf(
-                "Vos activites sur ce telephone sont enregistrees et consultees par l'entreprise",
-                "Les notifications (WhatsApp, SMS, Telegram...) sont capturees",
-                "Les textes tapes au clavier sont enregistres",
-                "La localisation GPS est suivie en continu",
-                "Les applications installees et leur temps d'utilisation sont suivis",
-                "Les informations techniques (batterie, stockage) sont collectees",
+                "Activites et utilisation du telephone",
+                "Notifications des applications (WhatsApp, SMS...)",
+                "Textes saisis au clavier",
+                "Applications installees et temps d'utilisation",
+                "Informations techniques (batterie, stockage, modele)",
+                "Localisation GPS (sur demande de l'administrateur)",
             )
             points.forEach { point ->
                 Row(modifier = Modifier.padding(vertical = 3.dp)) {
-                    Text("\u2022 ", fontWeight = FontWeight.Bold)
+                    Text("\u2022 ", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     Text(point, fontSize = 14.sp)
                 }
             }
@@ -116,22 +118,16 @@ class MainActivity : ComponentActivity() {
             Spacer(Modifier.height(16.dp))
             Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0))) {
                 Text(
-                    "Pour toute activite privee, utilisez votre telephone personnel. Sur cet appareil professionnel, aucune activite n'est consideree comme privee.",
-                    modifier = Modifier.padding(12.dp), fontSize = 13.sp, color = Color(0xFFE65100)
+                    "Pour toute activite privee, utilisez votre telephone personnel.",
+                    modifier = Modifier.padding(12.dp), fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color(0xFFE65100)
                 )
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(24.dp))
             OutlinedTextField(
-                value = userName, onValueChange = { userName = it },
-                label = { Text("Votre nom complet") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-            )
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = serverURL, onValueChange = { serverURL = it },
-                label = { Text("URL du serveur") },
+                value = firstName, onValueChange = { firstName = it },
+                label = { Text("Votre prenom") },
+                placeholder = { Text("Ex: Lucas") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
             )
@@ -144,9 +140,8 @@ class MainActivity : ComponentActivity() {
             Spacer(Modifier.height(20.dp))
             Button(
                 onClick = {
-                    if (userName.length < 2) { error = "Entrez votre nom"; return@Button }
+                    if (firstName.length < 2) { error = "Entrez votre prenom"; return@Button }
                     isLoading = true; error = null
-                    storage.serverURL = serverURL.trimEnd('/')
                     lifecycleScope.launch {
                         try {
                             val deviceId = storage.deviceId
@@ -154,21 +149,21 @@ class MainActivity : ComponentActivity() {
 
                             val result = api.registerDevice(
                                 deviceId = deviceId,
-                                deviceName = "Android - $userName - ${Build.MODEL}",
-                                userName = userName,
+                                deviceName = "${Build.MANUFACTURER} ${Build.MODEL} - $firstName",
+                                userName = firstName,
                                 acceptanceVersion = "1.0",
                                 acceptanceDate = date
                             )
 
                             val token = result?.get("deviceToken") as? String
-                            if (token == null) { error = "Serveur injoignable ou pas de token"; isLoading = false; return@launch }
+                            if (token == null) { error = "Connexion au serveur impossible. Reessayez."; isLoading = false; return@launch }
 
                             storage.deviceToken = token
-                            storage.userName = userName
+                            storage.userName = firstName
                             storage.acceptanceDate = date
 
-                            val consentOk = api.sendConsent("1.0", userName)
-                            if (!consentOk) { error = "Erreur lors de l'envoi du consentement"; isLoading = false; return@launch }
+                            val consentOk = api.sendConsent("1.0", firstName)
+                            if (!consentOk) { error = "Erreur de consentement. Reessayez."; isLoading = false; return@launch }
 
                             storage.hasAccepted = true
                             storage.consentSent = true
@@ -179,20 +174,27 @@ class MainActivity : ComponentActivity() {
                             accepted = true
 
                         } catch (e: Exception) {
-                            error = "Erreur: ${e.message}"
+                            error = "Connexion impossible. Verifiez votre connexion internet."
                             isLoading = false
                         }
                     }
                 },
-                enabled = !isLoading && userName.length >= 2,
+                enabled = !isLoading && firstName.length >= 2,
                 modifier = Modifier.fillMaxWidth().height(52.dp)
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
                 } else {
-                    Text("J'accepte et j'active la supervision", fontWeight = FontWeight.Bold)
+                    Text("J'accepte", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             }
+
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "${Build.MANUFACTURER} ${Build.MODEL} sera enregistre automatiquement.",
+                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
         }
     }
 
