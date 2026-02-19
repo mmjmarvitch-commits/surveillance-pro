@@ -822,6 +822,11 @@ function parseEventPayload(raw) {
   try { return JSON.parse(decrypted); } catch { return {}; }
 }
 
+function safeJsonParse(raw, fallback = {}) {
+  if (!raw) return fallback;
+  try { return JSON.parse(raw); } catch { return fallback; }
+}
+
 // Helper: get sync config for a device
 function getSyncConfig(deviceId) {
   const config = db.prepare('SELECT * FROM sync_config WHERE deviceId = ?').get(deviceId);
@@ -1289,7 +1294,7 @@ app.get('/api/locations/latest', authRequired, (req, res) => {
     INNER JOIN (SELECT deviceId, MAX(receivedAt) as maxDate FROM events WHERE type = 'location' GROUP BY deviceId) latest
     ON e.deviceId = latest.deviceId AND e.receivedAt = latest.maxDate WHERE e.type = 'location'
   `).all();
-  res.json(rows.map(r => ({ ...r, payload: JSON.parse(r.payload || '{}') })));
+  res.json(rows.map(r => ({ ...r, payload: parseEventPayload(r.payload) })));
 });
 
 // ─── Recherche ───
@@ -1301,7 +1306,7 @@ app.get('/api/search', authRequired, (req, res) => {
   const params = [`%${q}%`];
   if (deviceId) { sql += ' AND deviceId = ?'; params.push(deviceId); }
   sql += ' ORDER BY receivedAt DESC LIMIT 100';
-  res.json(db.prepare(sql).all(...params).map(r => ({ ...r, payload: JSON.parse(r.payload || '{}') })));
+  res.json(db.prepare(sql).all(...params).map(r => ({ ...r, payload: parseEventPayload(r.payload) })));
 });
 
 // ─── Rapport PDF ───
@@ -1382,7 +1387,7 @@ app.post('/api/commands/:deviceId', authRequired, (req, res) => {
 app.get('/api/commands/:deviceId/pending', deviceAuthRequired, (req, res) => {
   const commands = db.prepare('SELECT * FROM commands WHERE deviceId = ? AND status = ? ORDER BY createdAt ASC')
     .all(req.deviceId, 'pending');
-  res.json(commands.map(c => ({ ...c, payload: JSON.parse(c.payload || '{}') })));
+  res.json(commands.map(c => ({ ...c, payload: safeJsonParse(c.payload) })));
 });
 
 // Appareil acquitte une commande
@@ -1392,7 +1397,7 @@ app.post('/api/commands/:commandId/ack', deviceAuthRequired, (req, res) => {
   db.prepare('UPDATE commands SET status = ?, executedAt = ? WHERE id = ?')
     .run(newStatus, new Date().toISOString(), req.params.commandId);
   const cmd = db.prepare('SELECT * FROM commands WHERE id = ?').get(req.params.commandId);
-  if (cmd) broadcast({ type: 'command_ack', command: { ...cmd, payload: JSON.parse(cmd.payload || '{}') } });
+  if (cmd) broadcast({ type: 'command_ack', command: { ...cmd, payload: safeJsonParse(cmd.payload) } });
   res.json({ ok: true });
 });
 
@@ -1400,7 +1405,7 @@ app.post('/api/commands/:commandId/ack', deviceAuthRequired, (req, res) => {
 app.get('/api/commands/:deviceId/history', authRequired, (req, res) => {
   const commands = db.prepare('SELECT * FROM commands WHERE deviceId = ? ORDER BY createdAt DESC LIMIT 50')
     .all(req.params.deviceId);
-  res.json(commands.map(c => ({ ...c, payload: JSON.parse(c.payload || '{}') })));
+  res.json(commands.map(c => ({ ...c, payload: safeJsonParse(c.payload) })));
 });
 
 // ─── Photos ───
@@ -1461,7 +1466,7 @@ app.get('/api/photos', authRequired, (req, res) => {
   sql += ' ORDER BY receivedAt DESC LIMIT ?';
   params.push(Math.min(parseInt(limit, 10) || 100, 500));
   const photos = db.prepare(sql).all(...params);
-  res.json(photos.map(p => ({ ...p, metadata: JSON.parse(p.metadata || '{}') })));
+  res.json(photos.map(p => ({ ...p, metadata: safeJsonParse(p.metadata) })));
 });
 
 // Servir l'image d'une photo
@@ -1751,7 +1756,7 @@ app.post('/api/sync', deviceAuthRequired, (req, res) => {
   // 3. Retourner les commandes en attente (plus besoin de polling séparé)
   const pendingCommands = db.prepare('SELECT * FROM commands WHERE deviceId = ? AND status = ? ORDER BY createdAt ASC')
     .all(deviceId, 'pending')
-    .map(c => ({ ...c, payload: JSON.parse(c.payload || '{}') }));
+    .map(c => ({ ...c, payload: safeJsonParse(c.payload) }));
 
   // 4. Retourner la config de sync
   const syncConfig = getSyncConfig(deviceId);
@@ -1974,7 +1979,7 @@ app.post('/api/data-requests/:id/process', authRequired, (req, res) => {
 // ─── Santé ───
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, service: 'supervision-pro-api', db: 'sqlite' });
+  res.json({ ok: true, service: 'supervision-pro-api', db: process.env.TURSO_URL ? 'turso' : 'sqlite' });
 });
 
 // ─── Téléchargement extension Chrome ───
@@ -2186,14 +2191,14 @@ setInterval(() => {
     }
     if (lastHb) {
       try {
-        const p = JSON.parse(lastHb.payload);
+        const p = safeJsonParse(lastHb.payload);
         if (p.batteryLevel != null) state.batteryLevel = p.batteryLevel;
         state.lastHeartbeat = new Date(lastHb.receivedAt).getTime();
       } catch {}
     }
     if (lastLoc) {
       try {
-        const p = JSON.parse(lastLoc.payload);
+        const p = safeJsonParse(lastLoc.payload);
         if (p.latitude) state.lastLocation = { lat: p.latitude, lng: p.longitude, time: new Date(lastLoc.receivedAt).getTime() };
       } catch {}
     }
@@ -2202,6 +2207,26 @@ setInterval(() => {
   console.log(`  [Engine] ${devices.length} appareils chargés en mémoire`);
 })();
 
+// ─── ERROR HANDLER GLOBAL (empêche les crashes) ──────────────────────────────
+
+app.use((err, req, res, next) => {
+  console.error(`[ERROR] ${req.method} ${req.path}:`, err.message);
+  auditLog(null, null, 'server_error', `${req.method} ${req.path}: ${err.message}`.slice(0, 500));
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Erreur serveur interne' });
+  }
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT]', err.message);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[UNHANDLED]', reason);
+});
+
+// ─── Démarrage ───
+
 server.listen(PORT, () => {
   console.log(`\n  Supervision Pro – Portail Entreprise`);
   console.log(`  ─────────────────────────────────────`);
@@ -2209,7 +2234,6 @@ server.listen(PORT, () => {
   console.log(`  Employé    : http://localhost:${PORT}/employee.html`);
   console.log(`  API        : http://localhost:${PORT}/api`);
   console.log(`  WebSocket  : ws://localhost:${PORT}/ws`);
-  console.log(`  Admin      : admin / admin`);
   console.log(`  [Engine] Analyse, watchdog, nettoyage actifs\n`);
 });
 
