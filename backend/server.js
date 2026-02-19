@@ -1979,7 +1979,14 @@ app.post('/api/data-requests/:id/process', authRequired, (req, res) => {
 // ─── Santé ───
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, service: 'supervision-pro-api', db: process.env.TURSO_URL ? 'turso' : 'sqlite' });
+  let dbTest = 'untested';
+  try {
+    const count = db.prepare('SELECT COUNT(*) as c FROM devices').get();
+    dbTest = `ok (${count.c} devices)`;
+  } catch (e) {
+    dbTest = `error: ${e.message}`;
+  }
+  res.json({ ok: true, service: 'supervision-pro-api', db: process.env.TURSO_URL ? 'turso' : 'sqlite', dbTest });
 });
 
 // ─── Téléchargement extension Chrome ───
