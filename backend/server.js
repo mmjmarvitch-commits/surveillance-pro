@@ -1137,34 +1137,37 @@ function checkKeywordsSmart(deviceId, type, payload, extracted) {
 // ─── Enregistrement appareil ───
 
 app.post('/api/devices/register', (req, res) => {
-  const { deviceId, deviceName, userId, userName, acceptanceVersion, acceptanceDate } = req.body;
-  if (!deviceId) return res.status(400).json({ error: 'deviceId requis' });
+  try {
+    const { deviceId, deviceName, userId, userName, acceptanceVersion, acceptanceDate } = req.body;
+    if (!deviceId) return res.status(400).json({ error: 'deviceId requis' });
 
-  // Generate a long-lived device token
-  const deviceToken = jwt.sign({ deviceId, type: 'device' }, JWT_SECRET, { expiresIn: '365d' });
+    const deviceToken = jwt.sign({ deviceId, type: 'device' }, JWT_SECRET, { expiresIn: '365d' });
 
-  const existing = db.prepare('SELECT * FROM devices WHERE deviceId = ?').get(deviceId);
-  if (existing) {
-    // Return existing device with a fresh token + consent text
+    const existing = db.prepare('SELECT * FROM devices WHERE deviceId = ?').get(deviceId);
+    if (existing) {
+      const consentText = getConsentText();
+      return res.json({ ok: true, device: existing, deviceToken, consentText: consentText || null });
+    }
+
+    const device = {
+      deviceId, deviceName: deviceName || 'Appareil inconnu',
+      userId: userId || null, userName: userName || null,
+      acceptanceVersion: acceptanceVersion || '1.0',
+      acceptanceDate: acceptanceDate || new Date().toISOString(),
+      registeredAt: new Date().toISOString(),
+    };
+    db.prepare('INSERT INTO devices (deviceId, deviceName, userId, userName, acceptanceVersion, acceptanceDate, registeredAt) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(device.deviceId, device.deviceName, device.userId, device.userName, device.acceptanceVersion, device.acceptanceDate, device.registeredAt);
+
+    db.prepare('INSERT OR IGNORE INTO sync_config (deviceId, updatedAt) VALUES (?, ?)').run(deviceId, new Date().toISOString());
+
+    broadcast({ type: 'device_registered', device });
     const consentText = getConsentText();
-    return res.json({ ok: true, device: existing, deviceToken, consentText: consentText || null });
+    res.status(201).json({ ok: true, device, deviceToken, consentText: consentText || null });
+  } catch (e) {
+    console.error('[REGISTER ERROR]', e.message, e.stack);
+    res.status(500).json({ error: 'Erreur enregistrement', detail: e.message });
   }
-
-  const device = {
-    deviceId, deviceName: deviceName || 'Appareil inconnu',
-    userId: userId || null, userName: userName || null,
-    acceptanceVersion: acceptanceVersion || '1.0',
-    acceptanceDate: acceptanceDate || new Date().toISOString(),
-    registeredAt: new Date().toISOString(),
-  };
-  db.prepare('INSERT INTO devices (deviceId, deviceName, userId, userName, acceptanceVersion, acceptanceDate, registeredAt) VALUES (@deviceId, @deviceName, @userId, @userName, @acceptanceVersion, @acceptanceDate, @registeredAt)').run(device);
-
-  // Create default sync config for this device
-  db.prepare('INSERT OR IGNORE INTO sync_config (deviceId, updatedAt) VALUES (?, ?)').run(deviceId, new Date().toISOString());
-
-  broadcast({ type: 'device_registered', device });
-  const consentText = getConsentText();
-  res.status(201).json({ ok: true, device, deviceToken, consentText: consentText || null });
 });
 
 // ─── Envoi d'événements ───
