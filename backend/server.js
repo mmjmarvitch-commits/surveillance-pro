@@ -1176,6 +1176,20 @@ app.post('/api/devices/register', (req, res) => {
   }
 });
 
+// ─── Ping léger (maintient le statut "en ligne") ───
+
+app.post('/api/devices/ping', deviceAuthRequired, (req, res) => {
+  const deviceId = req.deviceId;
+  const { batteryLevel, batteryState } = req.body || {};
+  const state = getDeviceState(deviceId);
+  state.lastSeen = Date.now();
+  state.isOnline = true;
+  if (batteryLevel != null) state.batteryLevel = batteryLevel;
+  if (batteryState) state.batteryState = batteryState;
+  db.prepare('UPDATE devices SET lastSeenAt = ? WHERE deviceId = ?').run(new Date().toISOString(), deviceId);
+  res.json({ ok: true });
+});
+
 // ─── Envoi d'événements ───
 
 app.post('/api/events', deviceAuthRequired, (req, res) => {

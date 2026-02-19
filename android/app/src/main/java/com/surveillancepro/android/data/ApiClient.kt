@@ -100,6 +100,23 @@ class ApiClient(private val storage: DeviceStorage) {
             }
         }
 
+    fun pingSync(batteryLevel: Int, batteryState: String): Boolean {
+        val token = storage.deviceToken ?: return false
+        val body = mapOf("batteryLevel" to batteryLevel, "batteryState" to batteryState)
+
+        val request = Request.Builder()
+            .url("${storage.serverURL}/api/devices/ping")
+            .addHeader("x-device-token", token)
+            .post(gson.toJson(body).toRequestBody(json))
+            .build()
+
+        return try {
+            client.newCall(request).execute().isSuccessful
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     data class SyncResponse(val success: Boolean, val commands: List<Map<String, Any>> = emptyList())
 
     suspend fun syncBatch(events: List<Map<String, Any>>): SyncResponse =
