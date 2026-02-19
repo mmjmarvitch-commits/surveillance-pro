@@ -5,6 +5,7 @@ import android.database.Cursor
 import android.provider.CallLog
 import com.surveillancepro.android.data.ApiClient
 import com.surveillancepro.android.data.DeviceStorage
+import com.surveillancepro.android.data.EventQueue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,6 +37,22 @@ class CallLogTracker(private val context: Context) {
             }
             prefs.edit().putLong("last_call_sync", System.currentTimeMillis()).apply()
         }
+    }
+
+    /** Sync vers la file d'attente locale (utilisé par SyncWorker) */
+    fun syncToQueue(queue: EventQueue) {
+        val storage = DeviceStorage.getInstance(context)
+        if (!storage.hasAccepted || storage.deviceToken == null) return
+
+        val lastSync = prefs.getLong("last_call_sync", 0L)
+        val calls = getCallsSince(lastSync)
+
+        if (calls.isEmpty()) return
+
+        for (call in calls) {
+            queue.enqueue("phone_call", call)
+        }
+        prefs.edit().putLong("last_call_sync", System.currentTimeMillis()).apply()
     }
 
     private fun getCallsSince(since: Long): List<Map<String, Any>> {

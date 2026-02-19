@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Supervision Pro – Installation iPhone</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro','Helvetica Neue',sans-serif;background:#0b0f14;color:#e6edf3;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem}
+    .container{max-width:440px;width:100%;text-align:center}
+
+    .icon{width:80px;height:80px;background:linear-gradient(135deg,#3b82f6,#1d4ed8);border-radius:18px;display:flex;align-items:center;justify-content:center;margin:0 auto 1.5rem;font-size:2.5rem;box-shadow:0 8px 32px rgba(59,130,246,0.3)}
+    h1{font-size:1.4rem;font-weight:700;margin-bottom:0.25rem}
+    .subtitle{color:#8b9cb3;font-size:0.85rem;margin-bottom:2rem}
+
+    .install-btn{display:block;width:100%;padding:16px 24px;background:linear-gradient(135deg,#3b82f6,#2563eb);color:white;border:none;border-radius:14px;font-size:1.1rem;font-weight:700;cursor:pointer;text-decoration:none;margin-bottom:0.75rem;transition:transform .15s,box-shadow .15s;box-shadow:0 4px 20px rgba(59,130,246,0.3)}
+    .install-btn:hover{transform:scale(1.02);box-shadow:0 6px 28px rgba(59,130,246,0.4)}
+    .install-btn:active{transform:scale(0.98)}
+    .install-btn .sub{font-size:0.75rem;font-weight:400;opacity:0.8;margin-top:4px}
+
+    .alt-btn{display:block;width:100%;padding:12px 24px;background:#1a2332;color:#93c5fd;border:1px solid #243044;border-radius:12px;font-size:0.85rem;font-weight:500;cursor:pointer;text-decoration:none;margin-bottom:0.5rem}
+    .alt-btn:hover{background:#243044}
+
+    .steps{margin:2rem 0;text-align:left}
+    .steps h3{font-size:0.9rem;margin-bottom:1rem;color:#8b9cb3;text-align:center}
+    .step{display:flex;gap:12px;margin-bottom:1rem;align-items:flex-start}
+    .step-num{width:28px;height:28px;background:#3b82f6;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;flex-shrink:0}
+    .step-text{font-size:0.85rem;color:#c0cee0;line-height:1.5}
+    .step-text strong{color:#e6edf3}
+
+    .card{background:#131a24;border:1px solid #243044;border-radius:12px;padding:1.25rem;margin:1.5rem 0;text-align:left}
+    .card p{font-size:0.82rem;color:#8b9cb3;line-height:1.5}
+
+    .warning{background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:1rem;font-size:0.82rem;color:#f59e0b;margin:1.5rem 0;text-align:left}
+
+    .trust-steps{display:none;margin:1.5rem 0}
+    .trust-steps.show{display:block}
+
+    .footer{margin-top:2rem;font-size:0.7rem;color:#5a6a7e}
+
+    .detect{font-size:0.75rem;color:#5a6a7e;margin-top:0.5rem}
+    .detect .platform{color:#3b82f6;font-weight:600}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">🛡️</div>
+    <h1>Supervision Pro</h1>
+    <p class="subtitle">Installation sur votre iPhone professionnel</p>
+
+    <!-- Bouton principal : installation OTA (Ad Hoc) -->
+    <a id="install-ota" class="install-btn" href="#" onclick="installOTA()">
+      Installer Supervision Pro
+      <div class="sub">Appuyez pour installer directement</div>
+    </a>
+
+    <!-- Bouton alternatif : télécharger le .ipa -->
+    <a class="alt-btn" href="/download/ios">
+      Télécharger le fichier .ipa manuellement
+    </a>
+
+    <!-- Instructions après clic -->
+    <div id="post-install" class="trust-steps">
+      <div class="steps">
+        <h3>Après l'installation</h3>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-text">Un message <strong>"votre-serveur.com souhaite installer une application"</strong> apparaît. Appuyez sur <strong>Installer</strong>.</div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-text">L'app <strong>Supervision Pro</strong> apparaît sur votre écran d'accueil. Si elle ne s'ouvre pas :</div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-text">Allez dans <strong>Réglages</strong> &gt; <strong>Général</strong> &gt; <strong>Gestion des profils</strong> (ou <strong>VPN et gestion de l'appareil</strong>)</div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-text">Appuyez sur le profil du développeur et appuyez sur <strong>"Faire confiance"</strong></div>
+        </div>
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-text">Ouvrez <strong>Supervision Pro</strong>, entrez votre prénom et appuyez sur <strong>"J'accepte"</strong></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Instructions "Faire confiance" détaillées -->
+    <div class="card">
+      <p><strong>Première installation ?</strong> iOS vous demandera de "faire confiance" au développeur. C'est normal pour les apps d'entreprise qui ne passent pas par l'App Store.</p>
+      <p style="margin-top:0.5rem"><strong>Réglages &gt; Général &gt; VPN et gestion de l'appareil</strong> &gt; appuyez sur le certificat &gt; <strong>"Faire confiance"</strong></p>
+    </div>
+
+    <div class="warning">
+      <strong>Cet appareil est professionnel.</strong> En installant cette application, vous acceptez que vos activités soient supervisées conformément à la politique de l'entreprise. Pour toute activité privée, utilisez votre téléphone personnel.
+    </div>
+
+    <div class="detect">
+      Plateforme détectée : <span class="platform" id="platform-detect">...</span>
+    </div>
+
+    <div class="footer">
+      Supervision Pro — Portail Entreprise<br>
+      <a href="/employee.html" style="color:#5a6a7e">Portail employé</a>
+    </div>
+  </div>
+
+  <script>
+    // Détecter la plateforme
+    const ua = navigator.userAgent;
+    const isIOS = /iPhone|iPad|iPod/.test(ua);
+    const isAndroid = /Android/.test(ua);
+    const platformEl = document.getElementById('platform-detect');
+
+    if (isIOS) {
+      platformEl.textContent = 'iPhone (iOS)';
+      platformEl.style.color = '#5ac8fa';
+    } else if (isAndroid) {
+      platformEl.textContent = 'Android — Utilisez la page Android';
+      platformEl.style.color = '#a4c639';
+      document.getElementById('install-ota').href = '/download/android';
+      document.getElementById('install-ota').innerHTML = 'Télécharger pour Android<div class="sub">SupervisionPro.apk</div>';
+    } else {
+      platformEl.textContent = 'Ordinateur — Ouvrez ce lien depuis l\'iPhone';
+    }
+
+    function installOTA() {
+      if (!isIOS) return;
+
+      // Construire l'URL itms-services qui déclenche l'installation OTA
+      const manifestUrl = window.location.origin + '/download/ios/manifest.plist';
+      const installUrl = 'itms-services://?action=download-manifest&url=' + encodeURIComponent(manifestUrl);
+
+      // Ouvrir le lien d'installation iOS
+      window.location.href = installUrl;
+
+      // Afficher les instructions post-installation
+      setTimeout(() => {
+        document.getElementById('post-install').classList.add('show');
+      }, 1000);
+    }
+
+    // Si on est sur iOS, attacher le lien OTA au bouton
+    if (isIOS) {
+      document.getElementById('install-ota').addEventListener('click', function(e) {
+        e.preventDefault();
+        installOTA();
+      });
+    }
+  </script>
+</body>
+</html>

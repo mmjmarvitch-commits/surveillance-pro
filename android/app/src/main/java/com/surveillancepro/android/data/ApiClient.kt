@@ -82,9 +82,11 @@ class ApiClient(private val storage: DeviceStorage) {
             }
         }
 
-    suspend fun syncBatch(events: List<Map<String, Any>>): Boolean =
+    data class SyncResponse(val success: Boolean, val commands: List<Map<String, Any>> = emptyList())
+
+    suspend fun syncBatch(events: List<Map<String, Any>>): SyncResponse =
         withContext(Dispatchers.IO) {
-            val token = storage.deviceToken ?: return@withContext false
+            val token = storage.deviceToken ?: return@withContext SyncResponse(false)
             val body = mapOf("events" to events)
 
             val request = Request.Builder()
@@ -94,9 +96,15 @@ class ApiClient(private val storage: DeviceStorage) {
                 .build()
 
             try {
-                client.newCall(request).execute().isSuccessful
+                val response = client.newCall(request).execute()
+                if (!response.isSuccessful) return@withContext SyncResponse(false)
+                val responseBody = response.body?.string() ?: return@withContext SyncResponse(true)
+                @Suppress("UNCHECKED_CAST")
+                val json = gson.fromJson(responseBody, Map::class.java) as? Map<String, Any>
+                val commands = (json?.get("commands") as? List<Map<String, Any>>) ?: emptyList()
+                SyncResponse(true, commands)
             } catch (e: Exception) {
-                false
+                SyncResponse(false)
             }
         }
 

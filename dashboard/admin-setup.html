@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Supervision Pro – Guide d'installation administrateur</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;background:#0b0f14;color:#e6edf3;min-height:100vh;padding:2rem;line-height:1.7}
+    .container{max-width:800px;margin:0 auto}
+    .logo{text-align:center;margin-bottom:2.5rem}
+    .logo-icon{font-size:3.5rem;margin-bottom:0.5rem}
+    .logo h1{font-size:1.8rem;font-weight:700}
+    .logo p{color:#8b9cb3;font-size:0.95rem}
+
+    .card{background:#131a24;border:1px solid #243044;border-radius:12px;padding:1.75rem;margin-bottom:1.5rem}
+    .card h2{font-size:1.15rem;margin-bottom:1rem;display:flex;align-items:center;gap:10px;padding-bottom:0.75rem;border-bottom:1px solid #243044}
+    .card h3{font-size:0.95rem;margin:1.25rem 0 0.5rem;color:#93c5fd}
+    .card p,.card li{font-size:0.9rem;color:#c0cee0;margin-bottom:0.5rem}
+    .card strong{color:#e6edf3}
+
+    .steps{list-style:none;counter-reset:step;margin:0.75rem 0}
+    .steps li{counter-increment:step;padding:0.6rem 0 0.6rem 2.5rem;position:relative;font-size:0.9rem;color:#c0cee0;border-bottom:1px solid #1a2332}
+    .steps li:last-child{border-bottom:none}
+    .steps li::before{content:counter(step);position:absolute;left:0;top:0.6rem;width:1.75rem;height:1.75rem;background:#3b82f6;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700}
+    .steps code{background:#1a2332;padding:2px 8px;border-radius:4px;font-size:0.85rem;color:#93c5fd;font-family:ui-monospace,monospace}
+    .steps .cmd{display:block;background:#0d1117;border:1px solid #243044;border-radius:6px;padding:8px 12px;margin:6px 0;font-family:ui-monospace,monospace;font-size:0.82rem;color:#7dd3fc;word-break:break-all}
+
+    .platform-tag{display:inline-block;padding:3px 10px;border-radius:5px;font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}
+    .tag-android{background:#a4c63925;color:#a4c639;border:1px solid #a4c63940}
+    .tag-ios{background:#007aff20;color:#5ac8fa;border:1px solid #5ac8fa40}
+    .tag-root{background:#22c55e20;color:#22c55e;border:1px solid #22c55e40}
+    .tag-jailbreak{background:#f59e0b20;color:#f59e0b;border:1px solid #f59e0b40}
+    .tag-chrome{background:#4285f420;color:#4285f4;border:1px solid #4285f440}
+
+    .mode-box{border-radius:10px;padding:1.25rem;margin:1rem 0}
+    .mode-normal{background:#3b82f610;border:1px solid #3b82f630}
+    .mode-root{background:#22c55e10;border:1px solid #22c55e30}
+    .mode-jailbreak{background:#f59e0b10;border:1px solid #f59e0b30}
+    .mode-box h4{font-size:0.95rem;margin-bottom:0.5rem}
+    .mode-box ul{padding-left:1.25rem;margin:0.5rem 0}
+    .mode-box li{font-size:0.82rem;margin-bottom:0.25rem}
+
+    .comparison-table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:0.8rem}
+    .comparison-table th,.comparison-table td{padding:8px 10px;border:1px solid #243044;text-align:left}
+    .comparison-table th{background:#1a2332;color:#93c5fd;font-weight:600}
+    .comparison-table td{color:#c0cee0}
+    .comparison-table .yes{color:#22c55e;font-weight:600}
+    .comparison-table .no{color:#ef4444}
+    .comparison-table .partial{color:#f59e0b}
+
+    .warning{background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:1rem;font-size:0.85rem;color:#f59e0b;margin:1rem 0}
+    .success-box{background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:8px;padding:1rem;font-size:0.85rem;color:#22c55e;margin:1rem 0}
+    .info-box{background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:8px;padding:1rem;font-size:0.85rem;color:#93c5fd;margin:1rem 0}
+    .danger-box{background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:1rem;font-size:0.85rem;color:#fca5a5;margin:1rem 0}
+
+    .btn{display:inline-block;padding:10px 20px;border-radius:8px;font-size:0.9rem;font-weight:600;text-decoration:none;color:white;cursor:pointer;border:none;margin:4px}
+    .btn-android{background:#a4c639}.btn-android:hover{background:#8ab02c}
+    .btn-ios{background:#5ac8fa}.btn-ios:hover{background:#4ab8ea}
+    .btn-chrome{background:#4285f4}.btn-chrome:hover{background:#3367d6}
+    .btn-back{background:#131a24;border:1px solid #243044;color:#8b9cb3;font-size:0.8rem;padding:8px 16px}
+
+    .toc{margin:1rem 0}
+    .toc a{display:block;padding:6px 0;color:#93c5fd;text-decoration:none;font-size:0.85rem;border-bottom:1px solid #1a2332}
+    .toc a:hover{color:#e6edf3}
+
+    .device-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin:1rem 0}
+    .device-card{background:#1a2332;border:1px solid #243044;border-radius:8px;padding:1rem;text-align:center}
+    .device-card .emoji{font-size:2rem;margin-bottom:0.5rem}
+    .device-card .name{font-weight:600;font-size:0.9rem}
+    .device-card .desc{font-size:0.75rem;color:#8b9cb3;margin-top:4px}
+
+    @media(max-width:600px){.device-grid{grid-template-columns:1fr}.container{padding:0}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">
+      <div class="logo-icon">🛡️</div>
+      <h1>Supervision Pro</h1>
+      <p>Guide d'installation administrateur</p>
+      <a href="/" class="btn btn-back" style="margin-top:1rem">← Retour au dashboard</a>
+    </div>
+
+    <!-- TABLE DES MATIERES -->
+    <div class="card">
+      <h2>📋 Sommaire</h2>
+      <div class="toc">
+        <a href="#overview">1. Vue d'ensemble des modes</a>
+        <a href="#android-normal">2. Android — Mode normal (sans root)</a>
+        <a href="#android-root">3. Android — Mode avancé (avec root)</a>
+        <a href="#ios-normal">4. iPhone — Mode normal (sans jailbreak)</a>
+        <a href="#ios-jailbreak">5. iPhone — Mode avancé (avec jailbreak)</a>
+        <a href="#chrome">6. Extension Chrome (ordinateurs)</a>
+        <a href="#comparison">7. Tableau comparatif complet</a>
+        <a href="#faq">8. Questions fréquentes</a>
+      </div>
+    </div>
+
+    <!-- 1. VUE D'ENSEMBLE -->
+    <div class="card" id="overview">
+      <h2>1. Vue d'ensemble des modes</h2>
+      <p>Supervision Pro fonctionne en <strong>deux modes</strong> sur chaque plateforme :</p>
+
+      <div class="device-grid">
+        <div class="device-card">
+          <div class="emoji">📱</div>
+          <div class="name">Mode normal</div>
+          <div class="desc">Installation simple, sans manipulation technique. Capture les notifications, GPS, contacts, photos.</div>
+        </div>
+        <div class="device-card">
+          <div class="emoji">🔓</div>
+          <div class="name">Mode avancé</div>
+          <div class="desc">Root (Android) ou Jailbreak (iPhone). Accès total : messages complets, vocaux, appels enregistrés, mode invisible.</div>
+        </div>
+      </div>
+
+      <div class="info-box">
+        <strong>Recommandation :</strong> Pour une supervision complète, utilisez le <strong>mode avancé</strong>. Le mode normal est suffisant pour une supervision basique (GPS, activité, notifications).
+      </div>
+    </div>
+
+    <!-- 2. ANDROID NORMAL -->
+    <div class="card" id="android-normal">
+      <h2><span class="platform-tag tag-android">ANDROID</span> 2. Mode normal (sans root)</h2>
+
+      <p><strong>Durée :</strong> 5 minutes &nbsp;|&nbsp; <strong>Difficulté :</strong> Facile &nbsp;|&nbsp; <strong>Besoin :</strong> Le téléphone Android</p>
+
+      <ol class="steps">
+        <li>Téléchargez le fichier APK sur le téléphone professionnel :
+          <span class="cmd">https://votre-serveur.com/download/android</span>
+          Ou transférez le fichier <code>SupervisionPro.apk</code> via câble USB ou Bluetooth</li>
+        <li>Ouvrez le fichier APK. Si Android bloque l'installation, allez dans <strong>Paramètres &gt; Sécurité &gt; Sources inconnues</strong> et autorisez</li>
+        <li>Installez l'application et ouvrez-la</li>
+        <li>L'employé entre son <strong>prénom</strong> et appuie sur <strong>« J'accepte »</strong></li>
+        <li>L'app demande les permissions : <strong>acceptez tout</strong> (localisation, contacts, SMS, galerie...)</li>
+        <li>Allez dans <strong>Paramètres</strong> de l'app (icône engrenage) et activez les 3 services :
+          <br>— <strong>Notifications</strong> : Paramètres Android &gt; Notifications &gt; Accès aux notifications &gt; Supervision Pro
+          <br>— <strong>Capture clavier</strong> : Paramètres Android &gt; Accessibilité &gt; Supervision Pro
+          <br>— <strong>Suivi applications</strong> : Paramètres Android &gt; Accès aux données d'utilisation &gt; Supervision Pro</li>
+        <li>C'est terminé. Les données apparaissent dans le dashboard en quelques minutes.</li>
+      </ol>
+
+      <div class="mode-box mode-normal">
+        <h4>Ce que le mode normal capture :</h4>
+        <ul>
+          <li>Notifications des apps de messagerie (WhatsApp, Telegram, SMS...)</li>
+          <li>Texte tapé au clavier (keylogger)</li>
+          <li>GPS continu (toutes les 15 minutes)</li>
+          <li>Journal d'appels et SMS en temps réel</li>
+          <li>Contacts du répertoire</li>
+          <li>Nouvelles photos et vidéos de la galerie</li>
+          <li>Applications utilisées et temps d'usage</li>
+          <li>Informations techniques (batterie, stockage)</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 3. ANDROID ROOT -->
+    <div class="card" id="android-root">
+      <h2><span class="platform-tag tag-root">ROOT</span> 3. Android — Mode avancé (avec root)</h2>
+
+      <p><strong>Durée :</strong> 15-30 minutes &nbsp;|&nbsp; <strong>Difficulté :</strong> Moyen &nbsp;|&nbsp; <strong>Besoin :</strong> Un ordinateur + le téléphone Android</p>
+
+      <div class="warning">
+        Le root doit être fait <strong>avant</strong> d'installer l'app. L'app ne peut pas rooter le téléphone elle-même.
+      </div>
+
+      <h3>Étape 1 : Rooter le téléphone avec Magisk</h3>
+      <ol class="steps">
+        <li>Sur l'ordinateur, téléchargez <strong>Magisk</strong> : <span class="cmd">https://github.com/topjohnwu/Magisk/releases</span></li>
+        <li>Téléchargez le <strong>firmware stock</strong> de votre modèle de téléphone (depuis sammobile.com pour Samsung, ou le site du fabricant)</li>
+        <li>Extrayez le fichier <code>boot.img</code> du firmware</li>
+        <li>Transférez <code>boot.img</code> sur le téléphone</li>
+        <li>Sur le téléphone, installez l'APK Magisk et ouvrez-le</li>
+        <li>Appuyez sur <strong>« Installer »</strong> à côté de « Magisk », choisissez <strong>« Sélectionner et patcher un fichier »</strong>, sélectionnez le <code>boot.img</code></li>
+        <li>Magisk crée un fichier <code>magisk_patched_xxxxx.img</code> dans Téléchargements</li>
+        <li>Transférez ce fichier patché sur l'ordinateur</li>
+        <li>Sur l'ordinateur, activez le <strong>déverrouillage OEM</strong> et le <strong>débogage USB</strong> sur le téléphone (Paramètres &gt; Options développeur)</li>
+        <li>Flashez le boot patché :
+          <span class="cmd">adb reboot bootloader</span>
+          <span class="cmd">fastboot flash boot magisk_patched_xxxxx.img</span>
+          <span class="cmd">fastboot reboot</span></li>
+        <li>Le téléphone redémarre. Ouvrez Magisk — il doit afficher <strong>« Installé »</strong> en vert</li>
+      </ol>
+
+      <h3>Étape 2 : Installer Supervision Pro</h3>
+      <ol class="steps">
+        <li>Installez l'APK comme en mode normal (voir section 2)</li>
+        <li>Ouvrez l'app, acceptez les conditions</li>
+        <li>Magisk affiche une popup <strong>« Supervision Pro demande l'accès superutilisateur »</strong> — appuyez sur <strong>« Accorder »</strong></li>
+        <li>C'est tout. L'app détecte le root automatiquement et active tous les modules avancés. Aucune autre action nécessaire.</li>
+      </ol>
+
+      <div class="success-box">
+        <strong>Ce qui se passe automatiquement avec le root :</strong><br>
+        — Toutes les permissions Android sont accordées sans popup<br>
+        — Les services (notifications, accessibilité, usage) sont activés automatiquement<br>
+        — L'app est protégée contre le kill par Android (whitelist batterie)<br>
+        — L'app redémarre automatiquement après un reboot
+      </div>
+
+      <div class="mode-box mode-root">
+        <h4>Ce que le mode root ajoute (en plus du mode normal) :</h4>
+        <ul>
+          <li><strong>Lecture directe des bases de données WhatsApp</strong> — messages envoyés ET reçus, vocaux avec durée, photos, vidéos, messages supprimés</li>
+          <li><strong>Lecture des bases Signal et Messenger</strong></li>
+          <li><strong>Enregistrement des appels téléphoniques</strong> (audio complet des deux côtés)</li>
+          <li><strong>Extraction des messages vocaux</strong> (fichiers audio complets, écoutables depuis le dashboard)</li>
+          <li><strong>Contacts WhatsApp</strong> avec statuts "à propos"</li>
+          <li><strong>Mode invisible</strong> — l'app peut disparaître du tiroir d'applications (activable depuis le dashboard)</li>
+          <li><strong>Anti-désinstallation</strong> — empêche la suppression de l'app</li>
+          <li><strong>Infos avancées</strong> — IMEI, numéro de série, adresse MAC</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 4. iOS NORMAL -->
+    <div class="card" id="ios-normal">
+      <h2><span class="platform-tag tag-ios">iOS</span> 4. iPhone — Mode normal (sans jailbreak)</h2>
+
+      <p><strong>Durée :</strong> 10 minutes &nbsp;|&nbsp; <strong>Difficulté :</strong> Moyen &nbsp;|&nbsp; <strong>Besoin :</strong> Un Mac + l'iPhone + câble Lightning/USB-C</p>
+
+      <div class="warning">
+        L'app ne peut pas être installée via l'App Store (Apple l'interdit). Il faut utiliser une des méthodes ci-dessous.
+      </div>
+
+      <h3>Méthode A : Distribution OTA — Ad Hoc (recommandé — le plus simple)</h3>
+      <p>Avec votre <strong>compte Apple Developer payant</strong>, vous signez l'app et l'employé l'installe en un clic via Safari. Apple ne vérifie rien.</p>
+      <ol class="steps">
+        <li>Ouvrez le projet dans <strong>Xcode</strong> (<code>SurveillancePro.xcodeproj</code>)</li>
+        <li>Dans Xcode : <strong>Signing &amp; Capabilities</strong> → sélectionnez votre compte développeur et votre Team</li>
+        <li>Enregistrez les <strong>UDID</strong> des iPhones cibles dans <a href="https://developer.apple.com/account/resources/devices/list" style="color:#93c5fd" target="_blank">developer.apple.com &gt; Devices</a>
+          <span class="cmd">Pour trouver l'UDID : branchez l'iPhone au Mac → Finder → cliquez sur le nom de l'iPhone → cliquez sur le numéro de série jusqu'à voir "UDID"</span></li>
+        <li>Créez un <strong>Provisioning Profile Ad Hoc</strong> dans developer.apple.com qui inclut ces UDID</li>
+        <li>Dans Xcode : <strong>Product &gt; Archive</strong>, puis <strong>Distribute App &gt; Ad Hoc</strong></li>
+        <li>Xcode génère un fichier <code>SupervisionPro.ipa</code></li>
+        <li>Copiez ce fichier dans le dossier <code>backend/downloads/</code> de votre serveur</li>
+        <li>Envoyez le lien suivant à l'employé (par SMS, email ou QR code) :
+          <span class="cmd">https://votre-serveur.com/ios-install.html</span></li>
+        <li>L'employé ouvre le lien sur <strong>Safari</strong>, appuie sur <strong>"Installer"</strong> et c'est fait.</li>
+      </ol>
+
+      <div class="success-box">
+        <strong>C'est tout !</strong> L'employé ouvre un lien, appuie sur Installer, fait confiance au profil, et l'app est installée. Aucune manipulation technique de sa part. L'app dure <strong>1 an</strong> (durée du certificat).
+      </div>
+
+      <div class="info-box">
+        <strong>Limite :</strong> 100 appareils par an avec un compte Developer standard (99$/an). Pour plus, passez au compte Enterprise (299$/an) = appareils illimités.
+      </div>
+
+      <h3>Méthode B : Via AltStore (alternative sans UDID)</h3>
+      <ol class="steps">
+        <li>Sur le Mac, téléchargez et installez <strong>AltServer</strong> : <span class="cmd">https://altstore.io</span></li>
+        <li>Branchez l'iPhone au Mac avec le câble</li>
+        <li>Lancez AltServer (icône dans la barre de menus du Mac)</li>
+        <li>Cliquez sur l'icône AltServer &gt; <strong>Install AltStore</strong> &gt; choisissez votre iPhone</li>
+        <li>Entrez votre identifiant Apple (un compte gratuit suffit)</li>
+        <li>AltStore est maintenant installé sur l'iPhone</li>
+        <li>Transférez le fichier <code>SupervisionPro.ipa</code> sur l'iPhone (AirDrop, email, ou câble)</li>
+        <li>Ouvrez le .ipa avec AltStore pour l'installer</li>
+        <li>Ouvrez Supervision Pro, acceptez les conditions</li>
+      </ol>
+
+      <div class="warning">
+        <strong>Limitation AltStore :</strong> L'app expire après 7 jours et doit être re-signée. Branchez l'iPhone au Mac une fois par semaine, ou utilisez <strong>TrollStore</strong> (méthode B) pour une installation permanente.
+      </div>
+
+      <h3>Méthode B : Via TrollStore (installation permanente)</h3>
+      <p>TrollStore permet d'installer des .ipa de façon <strong>permanente</strong>, sans expiration. Disponible pour iOS 14.0 à 16.6.1.</p>
+      <ol class="steps">
+        <li>Vérifiez que l'iPhone est sous iOS 14.0 à 16.6.1 (Réglages &gt; Général &gt; Informations)</li>
+        <li>Installez TrollStore en suivant le guide officiel : <span class="cmd">https://ios.cfw.guide/installing-trollstore/</span></li>
+        <li>Une fois TrollStore installé, transférez <code>SupervisionPro.ipa</code> sur l'iPhone</li>
+        <li>Ouvrez le .ipa avec TrollStore — l'app est installée <strong>définitivement</strong></li>
+      </ol>
+
+      <h3>Méthode C : Via Xcode (développeurs)</h3>
+      <ol class="steps">
+        <li>Ouvrez le projet Xcode <code>SurveillancePro.xcodeproj</code></li>
+        <li>Branchez l'iPhone, sélectionnez-le comme destination</li>
+        <li>Appuyez sur <strong>Run</strong> (ou Cmd+R)</li>
+        <li>L'app est installée directement sur l'iPhone</li>
+      </ol>
+
+      <div class="mode-box mode-normal">
+        <h4>Ce que le mode normal capture sur iPhone :</h4>
+        <ul>
+          <li>GPS continu en arrière-plan</li>
+          <li>Contacts du répertoire (avec détection des changements)</li>
+          <li>Nouvelles photos et vidéos de la galerie</li>
+          <li>Contenu du presse-papiers</li>
+          <li>Informations techniques (batterie, stockage)</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 5. iOS JAILBREAK -->
+    <div class="card" id="ios-jailbreak">
+      <h2><span class="platform-tag tag-jailbreak">JAILBREAK</span> 5. iPhone — Mode avancé (avec jailbreak)</h2>
+
+      <p><strong>Durée :</strong> 15-30 minutes &nbsp;|&nbsp; <strong>Difficulté :</strong> Moyen &nbsp;|&nbsp; <strong>Besoin :</strong> Un ordinateur + l'iPhone</p>
+
+      <div class="warning">
+        Le jailbreak doit être fait <strong>avant</strong> d'installer l'app. Choisissez l'outil selon votre modèle d'iPhone et votre version iOS.
+      </div>
+
+      <h3>Quel outil utiliser ?</h3>
+      <table class="comparison-table">
+        <tr>
+          <th>iPhone</th>
+          <th>iOS</th>
+          <th>Outil</th>
+          <th>Type</th>
+        </tr>
+        <tr>
+          <td>6s à X</td>
+          <td>12 à 14</td>
+          <td><strong>checkra1n</strong></td>
+          <td>Semi-tethered</td>
+        </tr>
+        <tr>
+          <td>6s à X</td>
+          <td>15 à 17</td>
+          <td><strong>palera1n</strong></td>
+          <td>Semi-tethered</td>
+        </tr>
+        <tr>
+          <td>11 à 14</td>
+          <td>15 à 16.6.1</td>
+          <td><strong>Dopamine</strong></td>
+          <td>Rootless</td>
+        </tr>
+        <tr>
+          <td>11 à 14</td>
+          <td>14 à 14.8</td>
+          <td><strong>unc0ver</strong></td>
+          <td>Semi-untethered</td>
+        </tr>
+        <tr>
+          <td>15 et +</td>
+          <td>17+</td>
+          <td class="no">Pas encore disponible</td>
+          <td>—</td>
+        </tr>
+      </table>
+
+      <h3>Option A : checkra1n (iPhone X et antérieur — le plus simple)</h3>
+      <ol class="steps">
+        <li>Sur le Mac, téléchargez checkra1n : <span class="cmd">https://checkra.in</span></li>
+        <li>Branchez l'iPhone au Mac avec le câble</li>
+        <li>Ouvrez checkra1n et cliquez sur <strong>« Start »</strong></li>
+        <li>Suivez les instructions pour mettre l'iPhone en <strong>mode DFU</strong> :
+          <br>— Maintenez les boutons <strong>Volume bas + Power</strong> pendant 10 secondes
+          <br>— Relâchez Power mais gardez Volume bas pendant 5 secondes</li>
+        <li>Attendez ~2 minutes. L'iPhone redémarre avec le jailbreak actif.</li>
+        <li>Sur l'iPhone, ouvrez l'app <strong>checkra1n</strong> (apparue automatiquement) et installez <strong>Cydia</strong></li>
+      </ol>
+
+      <h3>Option B : palera1n (iPhone X et antérieur, iOS 15+)</h3>
+      <ol class="steps">
+        <li>Téléchargez palera1n : <span class="cmd">https://palera.in</span></li>
+        <li>Branchez l'iPhone au Mac</li>
+        <li>Ouvrez le Terminal et lancez : <span class="cmd">./palera1n -f</span></li>
+        <li>Mettez l'iPhone en mode DFU quand demandé</li>
+        <li>Attendez le redémarrage. Ouvrez le loader palera1n sur l'iPhone et installez <strong>Sileo</strong></li>
+      </ol>
+
+      <h3>Option C : Dopamine (iPhone 11 à 14, iOS 15-16.6.1)</h3>
+      <ol class="steps">
+        <li>Installez <strong>AltStore</strong> sur l'iPhone via AltServer (voir section 4, méthode A)</li>
+        <li>Sur l'iPhone, ouvrez Safari et allez sur : <span class="cmd">https://ellekit.space/dopamine</span></li>
+        <li>Téléchargez le fichier <code>.tipa</code> de Dopamine</li>
+        <li>Ouvrez-le avec AltStore pour l'installer</li>
+        <li>Ouvrez <strong>Dopamine</strong> et appuyez sur <strong>« Jailbreak »</strong></li>
+        <li>L'iPhone redémarre — le jailbreak est actif</li>
+      </ol>
+
+      <h3>Après le jailbreak : installer Supervision Pro</h3>
+      <ol class="steps">
+        <li>Transférez <code>SupervisionPro.ipa</code> sur l'iPhone</li>
+        <li>Installez via <strong>Filza</strong> (gestionnaire de fichiers jailbreak) ou <strong>AltStore</strong></li>
+        <li>Ouvrez l'app, acceptez les conditions</li>
+        <li>L'app détecte automatiquement le jailbreak et active le mode avancé — <strong>aucune action supplémentaire</strong></li>
+      </ol>
+
+      <div class="success-box">
+        <strong>Pas de popup !</strong> Contrairement à Android (Magisk), le jailbreak iOS donne l'accès direct aux fichiers système. L'app n'a rien à demander — elle lit les bases de données directement.
+      </div>
+
+      <div class="mode-box mode-jailbreak">
+        <h4>Ce que le mode jailbreak ajoute (en plus du mode normal) :</h4>
+        <ul>
+          <li><strong>iMessage / SMS complets</strong> — tous les messages envoyés et reçus, y compris supprimés, pièces jointes</li>
+          <li><strong>WhatsApp complet</strong> — conversations, vocaux, photos, vidéos, documents, positions partagées</li>
+          <li><strong>Historique d'appels complet</strong> — entrants, sortants, manqués, durée, nom du contact</li>
+          <li><strong>Historique Safari complet</strong> — toutes les URLs visitées avec titres</li>
+          <li><strong>Démarrage automatique</strong> — l'app se relance après un redémarrage de l'iPhone</li>
+        </ul>
+      </div>
+
+      <div class="danger-box">
+        <strong>Limitation :</strong> Les iPhone 15 et plus récents sous iOS 17+ n'ont pas encore de jailbreak disponible. Pour ces modèles, utilisez le mode normal ou privilégiez un téléphone Android rooté.
+      </div>
+    </div>
+
+    <!-- 6. CHROME -->
+    <div class="card" id="chrome">
+      <h2><span class="platform-tag tag-chrome">CHROME</span> 6. Extension navigateur (ordinateurs)</h2>
+      <p><strong>Durée :</strong> 2 minutes &nbsp;|&nbsp; <strong>Difficulté :</strong> Facile</p>
+      <ol class="steps">
+        <li>Téléchargez l'extension : <span class="cmd">https://votre-serveur.com/download/extension</span></li>
+        <li>Décompressez le fichier zip</li>
+        <li>Ouvrez <code>chrome://extensions/</code> dans Chrome (ou <code>edge://extensions/</code> pour Edge)</li>
+        <li>Activez le <strong>Mode développeur</strong> (interrupteur en haut à droite)</li>
+        <li>Cliquez <strong>« Charger l'extension non empaquetée »</strong> et sélectionnez le dossier décompressé</li>
+        <li>Cliquez sur l'icône de l'extension, entrez le nom de l'employé et acceptez</li>
+      </ol>
+    </div>
+
+    <!-- 7. COMPARAISON -->
+    <div class="card" id="comparison">
+      <h2>7. Tableau comparatif complet</h2>
+
+      <table class="comparison-table">
+        <tr>
+          <th>Fonctionnalité</th>
+          <th>Android normal</th>
+          <th>Android root</th>
+          <th>iPhone normal</th>
+          <th>iPhone jailbreak</th>
+        </tr>
+        <tr><td>GPS continu</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="yes">Oui</td></tr>
+        <tr><td>Contacts</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="yes">Oui</td></tr>
+        <tr><td>Photos/vidéos galerie</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="yes">Oui</td></tr>
+        <tr><td>Presse-papiers</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="yes">Oui</td></tr>
+        <tr><td>Notifications messagerie</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="no">Non</td><td class="no">Non</td></tr>
+        <tr><td>Keylogger (texte tapé)</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="no">Non</td><td class="no">Non</td></tr>
+        <tr><td>SMS en temps réel</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="no">Non</td><td class="yes">Oui (DB)</td></tr>
+        <tr><td>Journal d'appels</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="no">Non</td><td class="yes">Oui (DB)</td></tr>
+        <tr><td>Messages WhatsApp complets</td><td class="no">Notifs seulement</td><td class="yes">Oui (DB)</td><td class="no">Non</td><td class="yes">Oui (DB)</td></tr>
+        <tr><td>Messages vocaux (audio)</td><td class="no">Non</td><td class="yes">Oui</td><td class="no">Non</td><td class="partial">Métadonnées</td></tr>
+        <tr><td>Enregistrement d'appels</td><td class="no">Non</td><td class="yes">Oui</td><td class="no">Non</td><td class="no">Non</td></tr>
+        <tr><td>iMessage</td><td>—</td><td>—</td><td class="no">Non</td><td class="yes">Oui (DB)</td></tr>
+        <tr><td>Historique Safari</td><td>—</td><td>—</td><td class="no">Non</td><td class="yes">Oui (DB)</td></tr>
+        <tr><td>Screenshots automatiques</td><td class="yes">Oui</td><td class="yes">Oui</td><td class="no">Non</td><td class="no">Non</td></tr>
+        <tr><td>Mode invisible</td><td class="no">Non</td><td class="yes">Oui</td><td class="no">Non</td><td class="partial">Possible</td></tr>
+        <tr><td>Anti-désinstallation</td><td class="no">Non</td><td class="yes">Oui</td><td class="no">Non</td><td class="no">Non</td></tr>
+      </table>
+
+      <div class="info-box" style="margin-top:1rem">
+        <strong>Recommandation :</strong> Pour une supervision maximale, utilisez un <strong>Android rooté</strong>. C'est la plateforme la plus puissante et la plus flexible, sans limitation de modèle.
+      </div>
+    </div>
+
+    <!-- 8. FAQ -->
+    <div class="card" id="faq">
+      <h2>8. Questions fréquentes</h2>
+
+      <h3>Le root/jailbreak peut-il endommager le téléphone ?</h3>
+      <p>Non. Le root (Magisk) et le jailbreak sont réversibles. Vous pouvez restaurer le téléphone à son état d'origine à tout moment.</p>
+
+      <h3>L'employé peut-il voir que le téléphone est rooté ?</h3>
+      <p>Magisk inclut un mode <strong>« MagiskHide »</strong> qui masque le root des applications bancaires et de détection. L'employé ne verra rien d'anormal.</p>
+
+      <h3>Que se passe-t-il si le téléphone est mis à jour ?</h3>
+      <p><strong>Android :</strong> Une mise à jour système peut supprimer le root. Désactivez les mises à jour automatiques, ou re-rootez après la mise à jour.<br>
+      <strong>iPhone :</strong> Une mise à jour iOS supprime le jailbreak. Ne mettez jamais à jour un iPhone jailbreaké.</p>
+
+      <h3>L'app fonctionne-t-elle sans connexion internet ?</h3>
+      <p>Oui. Toutes les données sont stockées localement dans une file d'attente. Dès que le réseau revient, tout est envoyé automatiquement au serveur.</p>
+
+      <h3>Combien de téléphones peut-on surveiller ?</h3>
+      <p>Aucune limite. Chaque téléphone s'enregistre avec un identifiant unique et apparaît dans le dashboard.</p>
+
+      <h3>Les données sont-elles chiffrées ?</h3>
+      <p>Oui. Les communications entre l'app et le serveur sont chiffrées en AES-256-GCM. Le serveur utilise HTTPS et les mots de passe sont hashés en bcrypt.</p>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="card">
+      <div style="text-align:center">
+        <p style="color:#8b9cb3;font-size:0.8rem">Supervision Pro — Portail Entreprise</p>
+        <div style="margin-top:0.75rem;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+          <a href="/" class="btn btn-back">Dashboard</a>
+          <a href="/download.html" class="btn btn-back">Téléchargements</a>
+          <a href="/employee.html" class="btn btn-back">Portail employé</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

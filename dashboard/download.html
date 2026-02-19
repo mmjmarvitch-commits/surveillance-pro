@@ -80,10 +80,20 @@
     <!-- iOS -->
     <div class="card">
       <h2><span class="platform-tag tag-ios">iOS</span> Application iPhone</h2>
-      <p>Pour les iPhones professionnels — installation via Xcode ou TestFlight</p>
-      <div class="btn-download btn-ios">
-        Bientôt disponible
-        <div class="sub">Contactez l'administrateur pour l'installation</div>
+      <p>Pour les iPhones professionnels — envoyez le lien ci-dessous à l'employé</p>
+      <a href="/ios-install.html" class="btn-download" style="background:#5ac8fa">
+        Page d'installation iPhone
+        <div class="sub">L'employé ouvre ce lien sur Safari → l'app s'installe en un clic</div>
+      </a>
+      <ol class="steps">
+        <li>Envoyez le lien <code>/ios-install.html</code> à l'employé (SMS, email, QR code)</li>
+        <li>L'employé ouvre le lien sur <strong>Safari</strong> depuis l'iPhone</li>
+        <li>Il appuie sur <strong>"Installer"</strong> — iOS télécharge et installe l'app</li>
+        <li>Si demandé : <strong>Réglages &gt; Général &gt; Gestion des profils &gt; Faire confiance</strong></li>
+        <li>L'employé ouvre l'app, entre son prénom et accepte</li>
+      </ol>
+      <div class="warning">
+        <strong>Prérequis :</strong> Le fichier <code>SupervisionPro.ipa</code> (signé avec votre compte développeur) doit être placé dans le dossier <code>backend/downloads/</code> du serveur. Consultez le <a href="/admin-setup.html#ios-normal" style="color:#f59e0b">guide complet</a>.
       </div>
     </div>
 
@@ -96,7 +106,7 @@
 
     <div class="card">
       <div class="info-box">
-        <strong>Besoin d'aide ?</strong> Contactez votre administrateur ou accédez au <a href="/employee.html" style="color:#93c5fd">portail employé</a>.
+        <strong>Besoin d'aide ?</strong> Consultez le <a href="/admin-setup.html" style="color:#93c5fd">guide d'installation administrateur</a> pour les instructions complètes (root, jailbreak, mode avancé).
       </div>
     </div>
   </div>

