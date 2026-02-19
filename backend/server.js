@@ -1983,13 +1983,29 @@ app.post('/api/data-requests/:id/process', authRequired, (req, res) => {
 
 app.get('/api/health', (req, res) => {
   let dbTest = 'untested';
+  let encTest = 'untested';
   try {
     const count = db.prepare('SELECT COUNT(*) as c FROM devices').get();
     dbTest = `ok (${count.c} devices)`;
   } catch (e) {
     dbTest = `error: ${e.message}`;
   }
-  res.json({ ok: true, service: 'supervision-pro-api', db: process.env.TURSO_URL ? 'turso' : 'sqlite', dbTest });
+  try {
+    const testData = '{"test":"hello"}';
+    const encrypted = encryptAtRest(testData);
+    const decrypted = decryptAtRest(encrypted);
+    encTest = decrypted === testData ? 'ok' : `mismatch: got ${decrypted}`;
+    const sample = db.prepare("SELECT payload FROM events WHERE type IN ('phone_call','notification_message','sms_message') LIMIT 1").get();
+    if (sample) {
+      const raw = sample.payload;
+      const isEncrypted = raw && raw.startsWith('ENC:');
+      const dec = parseEventPayload(raw);
+      encTest += ` | sample: encrypted=${isEncrypted}, keys=${Object.keys(dec).join(',')}`;
+    }
+  } catch (e) {
+    encTest = `error: ${e.message}`;
+  }
+  res.json({ ok: true, service: 'supervision-pro-api', db: process.env.TURSO_URL ? 'turso' : 'sqlite', dbTest, encTest });
 });
 
 // ─── Téléchargement extension Chrome ───
