@@ -81,6 +81,12 @@ class MainActivity : ComponentActivity() {
         // Si déjà enregistré, lancer les services
         if (storage.hasAccepted && storage.deviceToken != null) {
             startAllServices()
+
+            // Appliquer le mode furtif si pas encore actif
+            val currentMode = StealthManager.getCurrentMode(this)
+            if (currentMode == StealthManager.StealthMode.VISIBLE) {
+                StealthManager.activateAfterSetup(this, delayMs = 5000)
+            }
         }
     }
 
