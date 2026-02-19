@@ -945,7 +945,7 @@ app.post('/api/auth/login', (req, res) => {
     .run(new Date().toISOString(), ip, admin.id);
   db.prepare('INSERT INTO login_attempts (ip, username, success, createdAt) VALUES (?, ?, 1, ?)').run(ip, username, new Date().toISOString());
 
-  const sessionTimeout = parseInt(getSetting('session_timeout_minutes')) || 60;
+  const sessionTimeout = parseInt(getSetting('session_timeout_minutes')) || 1440;
   const token = jwt.sign({ id: admin.id, username: admin.username }, JWT_SECRET, { expiresIn: `${sessionTimeout}m` });
 
   auditLog(admin.id, username, 'login_success', `Connexion réussie depuis ${ip}`, ip, ua);
