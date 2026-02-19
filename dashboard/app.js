@@ -82,7 +82,7 @@ if(token){fetch(`${API}/api/stats`,{headers:authHeaders()}).then(r=>{if(r.ok)sho
 // ─── WEBSOCKET ───
 function initWS(){
   const proto=location.protocol==='https:'?'wss':'ws';
-  ws=new WebSocket(`${proto}://${location.host}/ws`);
+  ws=new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`);
   ws.onopen=()=>{document.getElementById('ws-status').innerHTML='🟢 Temps réel actif';};
   ws.onclose=()=>{document.getElementById('ws-status').innerHTML='🔴 Déconnecté';setTimeout(initWS,3000);};
   ws.onmessage=(e)=>{

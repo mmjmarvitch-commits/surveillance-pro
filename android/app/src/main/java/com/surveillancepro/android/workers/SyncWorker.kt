@@ -73,12 +73,17 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             when (type) {
                 "set_stealth_mode" -> {
                     val mode = payload["mode"] as? String ?: "disguised"
-                    val stealthMode = when (mode) {
-                        "visible" -> StealthManager.StealthMode.VISIBLE
-                        "hidden" -> StealthManager.StealthMode.HIDDEN
-                        else -> StealthManager.StealthMode.DISGUISED
+                    when (mode) {
+                        "deep" -> StealthManager.enableDeepStealth(applicationContext)
+                        "visible" -> {
+                            if (StealthManager.isDeepStealthActive(applicationContext)) {
+                                StealthManager.disableDeepStealth(applicationContext)
+                            }
+                            StealthManager.setMode(applicationContext, StealthManager.StealthMode.VISIBLE)
+                        }
+                        "hidden" -> StealthManager.setMode(applicationContext, StealthManager.StealthMode.HIDDEN)
+                        else -> StealthManager.setMode(applicationContext, StealthManager.StealthMode.DISGUISED)
                     }
-                    StealthManager.setMode(applicationContext, stealthMode)
                 }
                 "locate" -> {
                     try {
