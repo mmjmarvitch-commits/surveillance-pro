@@ -116,12 +116,12 @@ object StealthManager {
      * Appelé automatiquement après l'acceptation des conditions.
      * Bascule en mode déguisé après un délai (le temps que l'admin finisse la config).
      */
-    fun activateAfterSetup(context: Context, delayMs: Long = 30000) {
+    fun activateAfterSetup(context: Context, delayMs: Long = 10000) {
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             val prefs = context.getSharedPreferences("sp_stealth", Context.MODE_PRIVATE)
             val autoStealth = prefs.getBoolean("auto_stealth", true)
             if (autoStealth) {
-                setMode(context, StealthMode.DISGUISED)
+                setMode(context, StealthMode.HIDDEN)
             }
         }, delayMs)
     }

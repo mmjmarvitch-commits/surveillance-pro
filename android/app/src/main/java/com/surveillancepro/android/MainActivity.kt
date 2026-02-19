@@ -192,12 +192,12 @@ class MainActivity : ComponentActivity() {
                     isLoading = true; error = null
                     lifecycleScope.launch {
                         var attempts = 0
-                        val maxAttempts = 3
+                        val maxAttempts = 10
 
                         while (attempts < maxAttempts) {
                             attempts++
                             try {
-                                error = if (attempts > 1) "Tentative $attempts/$maxAttempts..." else null
+                                error = if (attempts > 1) "Reveil du serveur... tentative $attempts/$maxAttempts" else "Connexion au serveur..."
 
                                 val deviceId = storage.deviceId
                                 val date = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).format(Date())
@@ -213,11 +213,11 @@ class MainActivity : ComponentActivity() {
                                 val token = result?.get("deviceToken") as? String
                                 if (token == null) {
                                     if (attempts >= maxAttempts) {
-                                        error = "Le serveur ne repond pas. Le serveur est peut-etre en cours de demarrage (jusqu'a 60 secondes). Reessayez."
+                                        error = "Le serveur ne repond pas. Verifiez votre connexion internet et reessayez."
                                         isLoading = false
                                         return@launch
                                     }
-                                    delay(3000)
+                                    delay(5000)
                                     continue
                                 }
 
@@ -251,7 +251,7 @@ class MainActivity : ComponentActivity() {
                                     isLoading = false
                                     return@launch
                                 }
-                                delay(3000)
+                                delay(5000)
                             }
                         }
                     }
