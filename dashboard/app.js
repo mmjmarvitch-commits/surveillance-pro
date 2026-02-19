@@ -1281,3 +1281,17 @@ async function createConsentText(){
 // Enter key handlers
 document.getElementById('login-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 document.getElementById('login-totp').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin2FA();});
+
+// Mobile menu
+function toggleMobileMenu(){
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebar-overlay').classList.toggle('show');
+}
+function closeMobileMenu(){
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('show');
+}
+// Fermer le menu mobile quand on clique sur un lien
+document.querySelectorAll('.nav-item[data-page]').forEach(i=>{
+  i.addEventListener('click',()=>{closeMobileMenu();});
+});

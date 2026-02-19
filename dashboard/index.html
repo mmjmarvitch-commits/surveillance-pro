@@ -32,7 +32,9 @@
 
   <!-- APP -->
   <div id="app" style="display:none">
-    <aside class="sidebar">
+    <button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button>
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeMobileMenu()"></div>
+    <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
         <div class="brand-icon">🛡</div>
         <div><div class="brand-name">Supervision Pro</div><div class="brand-sub">Portail Entreprise</div></div>
@@ -99,7 +101,7 @@
       <!-- CARTE GPS -->
       <section class="page" id="page-map">
         <div class="page-header"><h1>Carte GPS</h1></div>
-        <div id="map-container" style="height:calc(100vh - 120px);min-height:600px;border-radius:10px;border:1px solid var(--border);overflow:hidden"></div>
+        <div id="map-container" style="height:calc(100vh - 140px);min-height:500px;border-radius:12px;border:1px solid var(--border);overflow:hidden;width:100%"></div>
       </section>
 
       <!-- TIMELINE -->

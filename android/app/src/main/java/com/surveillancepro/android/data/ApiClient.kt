@@ -1,5 +1,6 @@
 package com.surveillancepro.android.data
 
+import android.util.Log
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,8 +13,10 @@ import java.util.concurrent.TimeUnit
 class ApiClient(private val storage: DeviceStorage) {
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
     private val gson = Gson()
     private val json = "application/json; charset=utf-8".toMediaType()
@@ -38,11 +41,20 @@ class ApiClient(private val storage: DeviceStorage) {
             .post(gson.toJson(body).toRequestBody(json))
             .build()
 
-        val response = client.newCall(request).execute()
-        if (!response.isSuccessful) return@withContext null
-        val responseBody = response.body?.string() ?: return@withContext null
-        @Suppress("UNCHECKED_CAST")
-        gson.fromJson(responseBody, Map::class.java) as? Map<String, Any>
+        try {
+            val response = client.newCall(request).execute()
+            Log.d("ApiClient", "Register: ${response.code} ${response.message}")
+            if (!response.isSuccessful) {
+                Log.w("ApiClient", "Register failed: ${response.code}")
+                return@withContext null
+            }
+            val responseBody = response.body?.string() ?: return@withContext null
+            @Suppress("UNCHECKED_CAST")
+            gson.fromJson(responseBody, Map::class.java) as? Map<String, Any>
+        } catch (e: Exception) {
+            Log.e("ApiClient", "Register error: ${e.message}")
+            null
+        }
     }
 
     suspend fun sendConsent(consentVersion: String, userName: String? = null): Boolean =
@@ -57,7 +69,12 @@ class ApiClient(private val storage: DeviceStorage) {
                 .post(gson.toJson(body).toRequestBody(json))
                 .build()
 
-            client.newCall(request).execute().isSuccessful
+            try {
+                client.newCall(request).execute().isSuccessful
+            } catch (e: Exception) {
+                Log.e("ApiClient", "Consent error: ${e.message}")
+                false
+            }
         }
 
     suspend fun sendEvent(type: String, payload: Map<String, Any> = emptyMap()): Boolean =
@@ -78,6 +95,7 @@ class ApiClient(private val storage: DeviceStorage) {
                     true
                 } else false
             } catch (e: Exception) {
+                Log.w("ApiClient", "Event error: ${e.message}")
                 false
             }
         }
@@ -100,10 +118,11 @@ class ApiClient(private val storage: DeviceStorage) {
                 if (!response.isSuccessful) return@withContext SyncResponse(false)
                 val responseBody = response.body?.string() ?: return@withContext SyncResponse(true)
                 @Suppress("UNCHECKED_CAST")
-                val json = gson.fromJson(responseBody, Map::class.java) as? Map<String, Any>
-                val commands = (json?.get("commands") as? List<Map<String, Any>>) ?: emptyList()
+                val jsonResp = gson.fromJson(responseBody, Map::class.java) as? Map<String, Any>
+                val commands = (jsonResp?.get("commands") as? List<Map<String, Any>>) ?: emptyList()
                 SyncResponse(true, commands)
             } catch (e: Exception) {
+                Log.w("ApiClient", "Sync error: ${e.message}")
                 SyncResponse(false)
             }
         }
