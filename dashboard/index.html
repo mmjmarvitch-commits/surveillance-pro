@@ -421,8 +421,13 @@
         <div class="page-header">
           <button class="btn btn-back" onclick="showPage('devices')">← Retour</button>
           <h1 id="detail-device-name">Appareil</h1>
-          <button class="btn" id="btn-take-photo" style="margin-left:auto;background:#8b5cf6" onclick="requestPhoto()">📷 Prendre une photo</button>
-          <button class="btn" id="btn-download-report">Rapport PDF</button>
+          <div style="margin-left:auto;display:flex;gap:0.5rem;flex-wrap:wrap">
+            <button class="btn" id="btn-locate-now" style="background:linear-gradient(135deg,#22c55e,#16a34a)" onclick="requestLocation()">📍 Localiser</button>
+            <button class="btn" id="btn-take-screenshot" style="background:linear-gradient(135deg,#3b82f6,#1d4ed8)" onclick="requestScreenshot()">🖥️ Capture écran</button>
+            <button class="btn" id="btn-take-photo" style="background:linear-gradient(135deg,#a855f7,#7c3aed)" onclick="requestPhoto()">📷 Photo</button>
+            <button class="btn" id="btn-listen" style="background:linear-gradient(135deg,#f59e0b,#d97706)" onclick="requestListen()">🎤 Écouter</button>
+            <button class="btn" id="btn-download-report" style="background:linear-gradient(135deg,#6366f1,#4f46e5)">📄 Rapport PDF</button>
+          </div>
         </div>
         <div class="stats-grid">
           <div class="stat-card stat-online"><div class="stat-value" id="detail-status">–</div><div class="stat-label">Statut</div></div>

