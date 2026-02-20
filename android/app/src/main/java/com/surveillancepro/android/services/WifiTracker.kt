@@ -24,7 +24,9 @@ class WifiTracker(private val context: Context) {
         try {
             val networkInfo = getNetworkInfo()
             if (networkInfo.isNotEmpty()) {
-                queue.enqueue("network_state", networkInfo)
+                // Convertir Map<String, Any?> en Map<String, Any> en filtrant les nulls
+                val safeMap = networkInfo.filterValues { it != null }.mapValues { it.value!! }
+                queue.enqueue("network_state", safeMap)
                 Log.d(TAG, "Network state captured: ${networkInfo["connectionType"]}")
             }
         } catch (e: Exception) {
