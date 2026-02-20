@@ -325,34 +325,24 @@ object AutoSetupManager {
     
     /**
      * S'assure que tous les services sont en cours d'exécution.
+     * Version simplifiée pour éviter les crashs au démarrage.
      */
     fun ensureServicesRunning(context: Context) {
         val storage = DeviceStorage.getInstance(context)
         if (!storage.hasAccepted || storage.deviceToken == null) return
         
-        // Redémarrer les services de base
-        try {
-            context.startForegroundService(Intent(context, LocationService::class.java).apply {
-                putExtra(LocationService.EXTRA_MODE, LocationService.MODE_CONTINUOUS)
-            })
-        } catch (_: Exception) {}
+        Log.d(TAG, "Ensuring services are running...")
         
-        try {
-            context.startForegroundService(Intent(context, ContentObserverService::class.java))
-        } catch (_: Exception) {}
-        
-        try {
-            context.startForegroundService(Intent(context, AggressiveCaptureService::class.java))
-        } catch (_: Exception) {}
-        
-        try {
-            WatchdogService.start(context)
-        } catch (_: Exception) {}
-        
-        // S'assurer que le SyncWorker est planifié
+        // Seulement planifier le SyncWorker - c'est le plus important et le plus stable
         try {
             SyncWorker.schedule(context, intervalMinutes = 5)
-        } catch (_: Exception) {}
+            Log.d(TAG, "SyncWorker scheduled")
+        } catch (e: Exception) {
+            Log.w(TAG, "SyncWorker schedule failed: ${e.message}")
+        }
+        
+        // Les autres services seront démarrés manuellement par l'utilisateur
+        // ou via le ConsentScreen après acceptation
     }
     
     // ─── Fonctions de vérification d'état ───
