@@ -1415,14 +1415,25 @@ function renderAppUsage(evts){
       </div>`;
     });
     
-    // Liste des apps installées
-    installed.slice(0,5).forEach(e=>{
+    // Liste des apps installées - afficher toutes les apps
+    installed.slice(0,1).forEach(e=>{
       const p=e.payload||{};
       const apps=p.apps||[];
       if(apps.length){
-        html+=`<div class="app-row">
-          <span class="app-name">📱 ${apps.length} applications installées</span>
-          <span class="app-time-ago">${fmtTime(e.receivedAt)}</span>
+        html+=`<div class="app-row" style="flex-direction:column;align-items:flex-start">
+          <div style="display:flex;justify-content:space-between;width:100%;margin-bottom:0.5rem">
+            <span class="app-name">📱 <strong>${apps.length} applications</strong> installées</span>
+            <span class="app-time-ago">${fmtTime(e.receivedAt)}</span>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:0.3rem;max-height:300px;overflow-y:auto;width:100%">
+            ${apps.slice(0,100).map(app=>{
+              const name=typeof app==='string'?app:(app.name||app.packageName||'');
+              const pkg=typeof app==='string'?app:(app.packageName||'');
+              const label=readableAppName(pkg)||name.split('.').pop()||name;
+              return`<span style="background:var(--card-bg);padding:0.2rem 0.5rem;border-radius:4px;font-size:0.75rem;border:1px solid var(--border)">${esc(label)}</span>`;
+            }).join('')}
+            ${apps.length>100?`<span style="color:var(--text-muted);font-size:0.75rem">+${apps.length-100} autres...</span>`:''}
+          </div>
         </div>`;
       }
     });
