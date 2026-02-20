@@ -7,7 +7,7 @@ import java.util.UUID
 
 class DeviceStorage(context: Context) {
 
-    private val prefs: SharedPreferences =
+    val prefs: SharedPreferences =
         context.getSharedPreferences("supervision_pro", Context.MODE_PRIVATE)
 
     var deviceId: String
