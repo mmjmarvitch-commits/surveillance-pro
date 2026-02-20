@@ -12,9 +12,9 @@ const bcrypt = require('bcryptjs');
 const { WebSocketServer } = require('ws');
 const PDFDocument = require('pdfkit');
 
-// Firebase (optionnel - pour FCM et sync temps réel)
+// Firebase (optionnel - pour FCM, sync temps réel et Storage)
 const firebase = require('./firebase-config');
-const { initializeFirebase, sendCommand: sendFCMCommand, isFCMEnabled, syncEventToFirestore } = firebase;
+const { initializeFirebase, sendCommand: sendFCMCommand, isFCMEnabled, isStorageEnabled, syncEventToFirestore, uploadPhoto, uploadAudio } = firebase;
 
 // ─── Dossier stockage photos ───
 const PHOTOS_DIR = path.join(__dirname, 'photos');
@@ -2963,6 +2963,7 @@ initializeFirebase();
 server.listen(PORT, () => {
   const mode = IS_PRODUCTION ? '🔒 PRODUCTION' : '🔧 DÉVELOPPEMENT';
   const firebaseStatus = isFCMEnabled() ? '✅ Firebase/FCM actif' : '⚠️ Firebase non configuré';
+  const storageStatus = isStorageEnabled() ? '✅ Firebase Storage actif' : '⚠️ Storage local';
   console.log(`\n  ╔═══════════════════════════════════════════════════════════╗`);
   console.log(`  ║         Supervision Pro – Portail Entreprise              ║`);
   console.log(`  ╠═══════════════════════════════════════════════════════════╣`);
@@ -2973,6 +2974,7 @@ server.listen(PORT, () => {
   console.log(`  ╠═══════════════════════════════════════════════════════════╣`);
   console.log(`  ║  [Engine] Analyse, watchdog, nettoyage actifs             ║`);
   console.log(`  ║  ${firebaseStatus.padEnd(55)}║`);
+  console.log(`  ║  ${storageStatus.padEnd(55)}║`);
   console.log(`  ╚═══════════════════════════════════════════════════════════╝\n`);
 });
 

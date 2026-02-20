@@ -22,6 +22,7 @@ const fs = require('fs');
 let firebaseApp = null;
 let firestore = null;
 let messaging = null;
+let storage = null;
 
 /**
  * Initialise Firebase Admin SDK
@@ -74,8 +75,14 @@ function initializeFirebase() {
     // Initialiser FCM
     messaging = admin.messaging();
 
+    // Initialiser Storage
+    if (process.env.FIREBASE_STORAGE_BUCKET) {
+      storage = admin.storage().bucket(process.env.FIREBASE_STORAGE_BUCKET);
+      console.log('  [Firebase] Storage activé:', process.env.FIREBASE_STORAGE_BUCKET);
+    }
+
     console.log('  [Firebase] Initialisé avec succès');
-    return { app: firebaseApp, firestore, messaging };
+    return { app: firebaseApp, firestore, messaging, storage };
 
   } catch (error) {
     console.error('  [Firebase] Erreur d\'initialisation:', error.message);
@@ -194,6 +201,80 @@ function isFCMEnabled() {
   return messaging !== null;
 }
 
+/**
+ * Vérifie si Storage est disponible
+ */
+function isStorageEnabled() {
+  return storage !== null;
+}
+
+/**
+ * Upload un fichier vers Firebase Storage
+ * @param {Buffer} fileBuffer - Le contenu du fichier
+ * @param {string} filePath - Le chemin dans le bucket (ex: photos/device123/photo1.jpg)
+ * @param {string} contentType - Le type MIME (ex: image/jpeg)
+ * @returns {Promise<string|null>} - L'URL publique ou null si erreur
+ */
+async function uploadToStorage(fileBuffer, filePath, contentType = 'application/octet-stream') {
+  if (!storage) {
+    console.log('  [Storage] Non disponible - Firebase Storage non configuré');
+    return null;
+  }
+
+  try {
+    const file = storage.file(filePath);
+    await file.save(fileBuffer, {
+      metadata: {
+        contentType,
+        cacheControl: 'public, max-age=31536000',
+      },
+    });
+
+    // Rendre le fichier public et obtenir l'URL
+    await file.makePublic();
+    const publicUrl = `https://storage.googleapis.com/${storage.name}/${filePath}`;
+    
+    console.log(`  [Storage] Fichier uploadé: ${filePath}`);
+    return publicUrl;
+
+  } catch (error) {
+    console.error('  [Storage] Erreur upload:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Upload une photo vers Firebase Storage
+ */
+async function uploadPhoto(deviceId, photoBuffer, filename) {
+  const filePath = `photos/${deviceId}/${filename}`;
+  return uploadToStorage(photoBuffer, filePath, 'image/jpeg');
+}
+
+/**
+ * Upload un fichier audio vers Firebase Storage
+ */
+async function uploadAudio(deviceId, audioBuffer, filename) {
+  const filePath = `audio/${deviceId}/${filename}`;
+  return uploadToStorage(audioBuffer, filePath, 'audio/mp4');
+}
+
+/**
+ * Supprime un fichier de Firebase Storage
+ */
+async function deleteFromStorage(filePath) {
+  if (!storage) return false;
+
+  try {
+    await storage.file(filePath).delete();
+    console.log(`  [Storage] Fichier supprimé: ${filePath}`);
+    return true;
+  } catch (error) {
+    console.error('  [Storage] Erreur suppression:', error.message);
+    return false;
+  }
+}
+
 module.exports = {
   initializeFirebase,
   sendPushNotification,
@@ -202,6 +283,12 @@ module.exports = {
   updateDeviceInFirestore,
   isFirebaseEnabled,
   isFCMEnabled,
+  isStorageEnabled,
+  uploadToStorage,
+  uploadPhoto,
+  uploadAudio,
+  deleteFromStorage,
   getFirestore: () => firestore,
   getMessaging: () => messaging,
+  getStorage: () => storage,
 };
