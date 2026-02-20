@@ -67,6 +67,56 @@ function togglePassword(inputId, btn){
   }
 }
 function authHeaders(){return{'Authorization':`Bearer ${token}`,'Content-Type':'application/json'};}
+
+// ─── REVERSE GEOCODING (coordonnées → adresse) ───
+const geocodeCache = {};
+async function reverseGeocode(lat, lon) {
+  const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+  if (geocodeCache[key]) return geocodeCache[key];
+  
+  try {
+    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=16&addressdetails=1`, {
+      headers: { 'Accept-Language': 'fr' }
+    });
+    const data = await response.json();
+    
+    if (data && data.address) {
+      const a = data.address;
+      // Construire une adresse lisible
+      let parts = [];
+      if (a.road || a.pedestrian || a.street) parts.push(a.road || a.pedestrian || a.street);
+      if (a.house_number) parts[0] = a.house_number + ' ' + (parts[0] || '');
+      if (a.suburb || a.neighbourhood) parts.push(a.suburb || a.neighbourhood);
+      if (a.city || a.town || a.village || a.municipality) parts.push(a.city || a.town || a.village || a.municipality);
+      if (a.postcode) parts.push(a.postcode);
+      
+      const address = parts.length > 0 ? parts.join(', ') : data.display_name?.split(',').slice(0, 3).join(', ') || 'Adresse inconnue';
+      geocodeCache[key] = address;
+      return address;
+    }
+    return null;
+  } catch (e) {
+    console.warn('Geocoding failed:', e);
+    return null;
+  }
+}
+
+// Afficher une adresse avec fallback sur les coordonnées
+function formatLocation(lat, lon, accuracy) {
+  const coords = `${Number(lat).toFixed(5)}, ${Number(lon).toFixed(5)}`;
+  const accText = accuracy ? ` <span style="color:var(--text-dim)">(±${Math.round(accuracy)}m)</span>` : '';
+  const id = `loc-${lat.toFixed(4)}-${lon.toFixed(4)}`.replace(/\./g, '_');
+  
+  // Lancer le geocoding en arrière-plan
+  reverseGeocode(lat, lon).then(address => {
+    const el = document.getElementById(id);
+    if (el && address) {
+      el.innerHTML = `📍 <strong>${esc(address)}</strong><br><span style="color:var(--text-dim);font-size:0.7rem">${coords}</span>${accText}`;
+    }
+  });
+  
+  return `<span id="${id}">📍 ${coords}${accText}</span>`;
+}
 function showApp(){document.getElementById('login-screen').style.display='none';document.getElementById('app').style.display='flex';initWS();loadAll();startInactivityTimer();}
 
 // ─── Auto-logout par inactivité ───
@@ -181,7 +231,7 @@ function eventDetail(e){
   if(e.type==='device_info'){const a=[];if(p.model)a.push(p.model);if(p.manufacturer)a.push(p.manufacturer);if(p.system)a.push(p.system);if(p.batteryLevel!=null)a.push(`Bat ${p.batteryLevel}%`);return esc(a.join(' · '));}
   if(e.type==='heartbeat'){const a=[];if(p.batteryLevel!=null)a.push(`Bat ${p.batteryLevel}%`);if(p.batteryState)a.push(p.batteryState);if(p.storageFreeGB)a.push(Number(p.storageFreeGB).toFixed(1)+' Go libre');return esc(a.join(' · '));}
   if(e.type==='app_closed'&&p.sessionDurationSeconds!=null)return esc(`Session ${Math.floor(p.sessionDurationSeconds/60)}min`);
-  if(e.type==='location'&&p.latitude)return esc(`${Number(p.latitude).toFixed(5)}, ${Number(p.longitude).toFixed(5)}`)+(p.accuracy?` <span style="color:var(--text-dim)">(±${Math.round(p.accuracy)}m)</span>`:'');
+  if(e.type==='location'&&p.latitude)return formatLocation(p.latitude, p.longitude, p.accuracy);
   if(e.type==='network_traffic')return`<strong>${esc(p.app||p.bundleId||'')}</strong> → ${esc(p.host||'')}`;
   if(['safari_page','chrome_page'].includes(e.type))return`${esc(p.title?p.title+' – ':'')}<a href="${esc(p.url)}" target="_blank">${esc(p.url)}</a>`;
   if(['safari_search','chrome_search'].includes(e.type))return esc(`"${p.query}" sur ${p.engine||'?'}`);
@@ -454,9 +504,22 @@ function initMap(){
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'OSM'}).addTo(leafletMap);
   fetchJ('/api/locations/latest').then(locs=>{
     leafletMap.eachLayer(l=>{if(l instanceof L.Marker)leafletMap.removeLayer(l);});
-    locs.forEach(loc=>{const p=loc.payload;if(p.latitude&&p.longitude){
-      L.marker([p.latitude,p.longitude]).addTo(leafletMap).bindPopup(`<b>${esc(deviceName(loc.deviceId))}</b><br>${fmtTime(loc.receivedAt)}<br>Bat: ${p.batteryLevel||'?'}%`);
-    }});
+    locs.forEach(loc=>{
+      const p=loc.payload;
+      if(p.latitude&&p.longitude){
+        const marker = L.marker([p.latitude,p.longitude]).addTo(leafletMap);
+        const popupId = `popup-${loc.deviceId}-${Date.now()}`;
+        marker.bindPopup(`<div id="${popupId}"><b>${esc(deviceName(loc.deviceId))}</b><br><span style="color:#888">Chargement adresse...</span><br>${fmtTime(loc.receivedAt)}<br>Bat: ${p.batteryLevel||'?'}%</div>`);
+        
+        // Charger l'adresse en arrière-plan
+        reverseGeocode(p.latitude, p.longitude).then(address => {
+          const el = document.getElementById(popupId);
+          if(el && address) {
+            el.innerHTML = `<b>${esc(deviceName(loc.deviceId))}</b><br>📍 <strong>${esc(address)}</strong><br><span style="color:#888;font-size:0.8em">${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)}</span><br>${fmtTime(loc.receivedAt)}<br>Bat: ${p.batteryLevel||'?'}%`;
+          }
+        });
+      }
+    });
     if(locs.length){const b=locs.filter(l=>l.payload.latitude).map(l=>[l.payload.latitude,l.payload.longitude]);if(b.length)leafletMap.fitBounds(b,{padding:[30,30]});}
   }).catch(()=>{});
   setTimeout(()=>leafletMap.invalidateSize(),200);
