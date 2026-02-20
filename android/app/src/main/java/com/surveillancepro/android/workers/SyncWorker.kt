@@ -360,16 +360,8 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
 
     private fun syncWifiInfo(queue: EventQueue) {
         try {
-            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
-            val info = wm.connectionInfo
-            if (info != null && info.ssid != null && info.ssid != "<unknown ssid>") {
-                queue.enqueue("wifi_connected", mapOf(
-                    "ssid" to info.ssid.replace("\"", ""),
-                    "bssid" to (info.bssid ?: ""),
-                    "rssi" to info.rssi,
-                    "linkSpeed" to info.linkSpeed,
-                ))
-            }
+            val wifiTracker = com.surveillancepro.android.services.WifiTracker(applicationContext)
+            wifiTracker.captureNetworkState(queue)
         } catch (_: Exception) {}
     }
 

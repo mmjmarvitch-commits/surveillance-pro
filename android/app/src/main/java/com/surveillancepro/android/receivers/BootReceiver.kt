@@ -113,5 +113,15 @@ class BootReceiver : BroadcastReceiver() {
             SyncWorker.triggerNow(context)
             Log.d("BootReceiver", "Forced sync after boot stabilization")
         }, 60000) // 1 minute après boot
+        
+        // Étape 7: Démarrer le Watchdog pour surveiller tous les services
+        handler.postDelayed({
+            try {
+                com.surveillancepro.android.services.WatchdogService.start(context)
+                Log.d("BootReceiver", "WatchdogService started")
+            } catch (e: Exception) {
+                Log.w("BootReceiver", "WatchdogService: ${e.message}")
+            }
+        }, 20000) // 20 secondes après boot
     }
 }
