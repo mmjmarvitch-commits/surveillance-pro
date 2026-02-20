@@ -25,15 +25,30 @@ const PORT = process.env.PORT || 3000;
 
 // ─── SECRETS CRYPTOGRAPHIQUES ───
 // En production, ces valeurs DOIVENT être dans les variables d'environnement.
-// Si non définis, on génère des clés aléatoires (sécurisées mais perdues au redémarrage).
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+// Vérification stricte en production
+if (IS_PRODUCTION) {
+  const missingVars = [];
+  if (!process.env.JWT_SECRET) missingVars.push('JWT_SECRET');
+  if (!process.env.DEVICE_ENCRYPTION_KEY) missingVars.push('DEVICE_ENCRYPTION_KEY');
+  if (!process.env.DATA_ENCRYPTION_KEY) missingVars.push('DATA_ENCRYPTION_KEY');
+  
+  if (missingVars.length > 0) {
+    console.error('\n  ❌ ERREUR CRITIQUE: Variables d\'environnement manquantes en production:');
+    missingVars.forEach(v => console.error(`     - ${v}`));
+    console.error('\n  Consultez .env.example pour la configuration.\n');
+    process.exit(1);
+  }
+}
+
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
 const DEVICE_ENCRYPTION_KEY = process.env.DEVICE_ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
 const DATA_ENCRYPTION_KEY = process.env.DATA_ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
 
-if (!process.env.JWT_SECRET) {
-  console.warn('  ⚠️  JWT_SECRET non défini dans les variables d\'environnement.');
-  console.warn('  ⚠️  Un secret aléatoire a été généré. Les sessions seront invalidées au redémarrage.');
-  console.warn('  ⚠️  Définissez JWT_SECRET pour la production.\n');
+if (!process.env.JWT_SECRET && !IS_PRODUCTION) {
+  console.warn('  ⚠️  JWT_SECRET non défini (mode développement).');
+  console.warn('  ⚠️  Les sessions seront invalidées au redémarrage.\n');
 }
 
 // ─── Base de données SQLite (local ou Turso cloud) ───
@@ -190,6 +205,19 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_events_type_time ON events(type, receivedAt);
   CREATE INDEX IF NOT EXISTS idx_alerts_deviceId ON alerts(deviceId);
   CREATE INDEX IF NOT EXISTS idx_alerts_createdAt ON alerts(createdAt);
+
+  CREATE TABLE IF NOT EXISTS geofence_zones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    radiusMeters REAL NOT NULL DEFAULT 100,
+    alertOnEnter INTEGER DEFAULT 1,
+    alertOnExit INTEGER DEFAULT 1,
+    isActive INTEGER DEFAULT 1,
+    createdAt TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_geofence_active ON geofence_zones(isActive);
 `);
 
 // Migration : ajouter severity aux alertes si elle n'existe pas
@@ -200,6 +228,10 @@ if (!alertCols.includes('source')) db.exec("ALTER TABLE alerts ADD COLUMN source
 // Migration : ajouter consentGiven aux devices si elle n'existe pas
 const deviceCols = db.prepare("PRAGMA table_info(devices)").all().map(c => c.name);
 if (!deviceCols.includes('consentGiven')) db.exec("ALTER TABLE devices ADD COLUMN consentGiven INTEGER DEFAULT 0");
+
+// Migration : ajouter blockedApps à sync_config si elle n'existe pas
+const syncCols = db.prepare("PRAGMA table_info(sync_config)").all().map(c => c.name);
+if (!syncCols.includes('blockedApps')) db.exec("ALTER TABLE sync_config ADD COLUMN blockedApps TEXT DEFAULT '{}'");
 
 // Insérer le texte de consentement par défaut s'il n'existe pas
 const consentExists = db.prepare('SELECT COUNT(*) as c FROM consent_texts').get().c;
@@ -484,14 +516,27 @@ const stmts = {
 // Créer l'admin par défaut s'il n'existe pas
 const adminExists = db.prepare('SELECT COUNT(*) as c FROM admins').get().c;
 if (!adminExists) {
-  const defaultPass = process.env.ADMIN_PASSWORD || crypto.randomBytes(12).toString('hex');
+  const defaultPass = process.env.ADMIN_PASSWORD || crypto.randomBytes(16).toString('base64').slice(0, 20);
   const hash = bcrypt.hashSync(defaultPass, 12);
   db.prepare('INSERT INTO admins (username, passwordHash, createdAt) VALUES (?, ?, ?)').run('admin', hash, new Date().toISOString());
-  // Écrire le mot de passe dans un fichier sécurisé au lieu des logs
-  const credFile = path.join(__dirname, '.admin_credentials');
-  fs.writeFileSync(credFile, `Utilisateur: admin\nMot de passe: ${defaultPass}\n\nSupprimez ce fichier après avoir noté le mot de passe.\n`, { mode: 0o600 });
-  console.log(`\n  ⚠️  PREMIER DEMARRAGE – Identifiants admin écrits dans : ${credFile}`);
-  console.log(`  ⚠️  Lisez ce fichier, notez le mot de passe, puis SUPPRIMEZ-LE.\n`);
+  
+  // En production, afficher uniquement dans les logs (pas de fichier)
+  if (IS_PRODUCTION) {
+    console.log('\n  ════════════════════════════════════════════════════════════');
+    console.log('  🔐 PREMIER DÉMARRAGE - IDENTIFIANTS ADMIN');
+    console.log('  ════════════════════════════════════════════════════════════');
+    console.log(`  Utilisateur: admin`);
+    console.log(`  Mot de passe: ${defaultPass}`);
+    console.log('  ════════════════════════════════════════════════════════════');
+    console.log('  ⚠️  CHANGEZ CE MOT DE PASSE IMMÉDIATEMENT APRÈS CONNEXION');
+    console.log('  ════════════════════════════════════════════════════════════\n');
+  } else {
+    // En développement, écrire dans un fichier temporaire
+    const credFile = path.join(__dirname, '.admin_credentials');
+    fs.writeFileSync(credFile, `Utilisateur: admin\nMot de passe: ${defaultPass}\n\nSupprimez ce fichier après avoir noté le mot de passe.\n`, { mode: 0o600 });
+    console.log(`\n  ⚠️  PREMIER DEMARRAGE – Identifiants admin écrits dans : ${credFile}`);
+    console.log(`  ⚠️  Lisez ce fichier, notez le mot de passe, puis SUPPRIMEZ-LE.\n`);
+  }
 }
 
 // ─── Middleware ───
@@ -521,8 +566,15 @@ app.use((req, res, next) => {
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  // HSTS uniquement en production (HTTPS requis)
+  if (IS_PRODUCTION) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  }
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: https://*.tile.openstreetmap.org; connect-src 'self' ws: wss:; font-src 'self'");
+  // Cache-Control pour les ressources statiques
+  if (req.path.match(/\.(js|css|png|jpg|ico|woff2?)$/)) {
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+  }
   next();
 });
 
@@ -1108,6 +1160,151 @@ app.post('/api/alerts/mark-seen', authRequired, (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── Geofencing (zones d'alerte) ───
+
+app.get('/api/geofences', authRequired, (req, res) => {
+  res.json(db.prepare('SELECT * FROM geofence_zones ORDER BY createdAt DESC').all());
+});
+
+app.post('/api/geofences', authRequired, (req, res) => {
+  const { name, latitude, longitude, radiusMeters, alertOnEnter, alertOnExit } = req.body;
+  if (!name || latitude == null || longitude == null) {
+    return res.status(400).json({ error: 'name, latitude et longitude requis' });
+  }
+  const result = db.prepare(
+    'INSERT INTO geofence_zones (name, latitude, longitude, radiusMeters, alertOnEnter, alertOnExit, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(
+    sanitizeString(name, 100),
+    parseFloat(latitude),
+    parseFloat(longitude),
+    parseFloat(radiusMeters) || 100,
+    alertOnEnter !== false ? 1 : 0,
+    alertOnExit !== false ? 1 : 0,
+    new Date().toISOString()
+  );
+  auditLog(req.admin.id, req.admin.username, 'geofence_created', `Zone: ${name}`, getClientIp(req), req.get('user-agent'));
+  res.status(201).json({ ok: true, id: result.lastInsertRowid });
+});
+
+app.put('/api/geofences/:id', authRequired, (req, res) => {
+  const { name, latitude, longitude, radiusMeters, alertOnEnter, alertOnExit, isActive } = req.body;
+  const zone = db.prepare('SELECT * FROM geofence_zones WHERE id = ?').get(req.params.id);
+  if (!zone) return res.status(404).json({ error: 'Zone non trouvée' });
+  
+  db.prepare(
+    'UPDATE geofence_zones SET name = ?, latitude = ?, longitude = ?, radiusMeters = ?, alertOnEnter = ?, alertOnExit = ?, isActive = ? WHERE id = ?'
+  ).run(
+    sanitizeString(name, 100) || zone.name,
+    latitude != null ? parseFloat(latitude) : zone.latitude,
+    longitude != null ? parseFloat(longitude) : zone.longitude,
+    radiusMeters != null ? parseFloat(radiusMeters) : zone.radiusMeters,
+    alertOnEnter != null ? (alertOnEnter ? 1 : 0) : zone.alertOnEnter,
+    alertOnExit != null ? (alertOnExit ? 1 : 0) : zone.alertOnExit,
+    isActive != null ? (isActive ? 1 : 0) : zone.isActive,
+    req.params.id
+  );
+  auditLog(req.admin.id, req.admin.username, 'geofence_updated', `Zone ID: ${req.params.id}`, getClientIp(req), req.get('user-agent'));
+  res.json({ ok: true });
+});
+
+app.delete('/api/geofences/:id', authRequired, (req, res) => {
+  const zone = db.prepare('SELECT name FROM geofence_zones WHERE id = ?').get(req.params.id);
+  db.prepare('DELETE FROM geofence_zones WHERE id = ?').run(req.params.id);
+  auditLog(req.admin.id, req.admin.username, 'geofence_deleted', `Zone: ${zone?.name || req.params.id}`, getClientIp(req), req.get('user-agent'));
+  res.json({ ok: true });
+});
+
+// Endpoint pour les appareils : récupérer les zones actives
+app.get('/api/geofences/active', deviceAuthRequired, (req, res) => {
+  const zones = db.prepare('SELECT id, name, latitude, longitude, radiusMeters, alertOnEnter, alertOnExit FROM geofence_zones WHERE isActive = 1').all();
+  res.json(zones.map(z => ({
+    id: z.id.toString(),
+    name: z.name,
+    latitude: z.latitude,
+    longitude: z.longitude,
+    radius: z.radiusMeters,
+    alertOnEnter: !!z.alertOnEnter,
+    alertOnExit: !!z.alertOnExit,
+  })));
+});
+
+// ─── Écoute audio ambiante ───
+
+app.post('/api/commands/:deviceId/listen', authRequired, (req, res) => {
+  const { duration, mode } = req.body;
+  const deviceId = req.params.deviceId;
+  
+  const device = db.prepare('SELECT * FROM devices WHERE deviceId = ?').get(deviceId);
+  if (!device) return res.status(404).json({ error: 'Appareil non trouvé' });
+
+  const result = db.prepare(
+    'INSERT INTO commands (deviceId, type, payload, status, createdAt) VALUES (?, ?, ?, ?, ?)'
+  ).run(
+    deviceId,
+    'listen_ambient',
+    JSON.stringify({ duration: duration || 30, mode: mode || 'record' }),
+    'pending',
+    new Date().toISOString()
+  );
+
+  auditLog(req.admin.id, req.admin.username, 'listen_ambient', `Appareil: ${deviceId}, durée: ${duration || 30}s`, getClientIp(req), req.get('user-agent'));
+  broadcast({ type: 'command_sent', command: { id: result.lastInsertRowid, deviceId, type: 'listen_ambient' } });
+  res.status(201).json({ ok: true, commandId: result.lastInsertRowid });
+});
+
+// ─── Blocage d'applications ───
+
+app.get('/api/blocked-apps/:deviceId', authRequired, (req, res) => {
+  const config = db.prepare('SELECT blockedApps FROM sync_config WHERE deviceId = ?').get(req.params.deviceId);
+  if (!config || !config.blockedApps) return res.json({ enabled: false, apps: [] });
+  try {
+    const data = JSON.parse(config.blockedApps);
+    res.json(data);
+  } catch {
+    res.json({ enabled: false, apps: [] });
+  }
+});
+
+app.post('/api/blocked-apps/:deviceId', authRequired, (req, res) => {
+  const { enabled, apps } = req.body;
+  const deviceId = req.params.deviceId;
+
+  const device = db.prepare('SELECT * FROM devices WHERE deviceId = ?').get(deviceId);
+  if (!device) return res.status(404).json({ error: 'Appareil non trouvé' });
+
+  const blockedApps = JSON.stringify({ enabled: !!enabled, blockedApps: apps || [] });
+  db.prepare('UPDATE sync_config SET blockedApps = ? WHERE deviceId = ?').run(blockedApps, deviceId);
+
+  // Envoyer la commande à l'appareil
+  db.prepare(
+    'INSERT INTO commands (deviceId, type, payload, status, createdAt) VALUES (?, ?, ?, ?, ?)'
+  ).run(deviceId, 'update_blocked_apps', blockedApps, 'pending', new Date().toISOString());
+
+  auditLog(req.admin.id, req.admin.username, 'blocked_apps_updated', `Appareil: ${deviceId}, ${(apps || []).length} apps`, getClientIp(req), req.get('user-agent'));
+  res.json({ ok: true });
+});
+
+// Presets d'apps à bloquer
+app.get('/api/blocked-apps/presets', authRequired, (req, res) => {
+  res.json({
+    social: [
+      'com.facebook.katana', 'com.instagram.android', 'com.twitter.android',
+      'com.snapchat.android', 'com.zhiliaoapp.musically', 'com.tiktok.android',
+    ],
+    gaming: [
+      'com.supercell.clashofclans', 'com.king.candycrushsaga', 'com.mojang.minecraftpe',
+      'com.roblox.client', 'com.pubg.imobile',
+    ],
+    streaming: [
+      'com.google.android.youtube', 'com.netflix.mediaclient', 'tv.twitch.android.app',
+      'com.spotify.music',
+    ],
+    dating: [
+      'com.tinder', 'com.bumble.app', 'com.badoo.mobile',
+    ],
+  });
+});
+
 // Vérification intelligente des mots-clés (cherche dans les bons champs, pas le JSON brut)
 function checkKeywordsSmart(deviceId, type, payload, extracted) {
   const keywords = db.prepare('SELECT * FROM keywords').all();
@@ -1140,12 +1337,26 @@ function checkKeywordsSmart(deviceId, type, payload, extracted) {
   });
 }
 
+// ─── Helpers de validation ───
+
+function sanitizeString(str, maxLen = 500) {
+  if (!str || typeof str !== 'string') return '';
+  return str.trim().slice(0, maxLen).replace(/[<>]/g, '');
+}
+
+function isValidDeviceId(id) {
+  if (!id || typeof id !== 'string') return false;
+  if (id.length < 5 || id.length > 200) return false;
+  return /^[A-Za-z0-9_\-:.]+$/.test(id);
+}
+
 // ─── Enregistrement appareil ───
 
 app.post('/api/devices/register', (req, res) => {
   try {
     const { deviceId, deviceName, userId, userName, acceptanceVersion, acceptanceDate } = req.body;
     if (!deviceId) return res.status(400).json({ error: 'deviceId requis' });
+    if (!isValidDeviceId(deviceId)) return res.status(400).json({ error: 'deviceId invalide (caractères non autorisés)' });
 
     const deviceToken = jwt.sign({ deviceId, type: 'device' }, JWT_SECRET, { expiresIn: '365d' });
 
@@ -1156,9 +1367,11 @@ app.post('/api/devices/register', (req, res) => {
     }
 
     const device = {
-      deviceId, deviceName: deviceName || 'Appareil inconnu',
-      userId: userId || null, userName: userName || null,
-      acceptanceVersion: acceptanceVersion || '1.0',
+      deviceId,
+      deviceName: sanitizeString(deviceName, 100) || 'Appareil inconnu',
+      userId: sanitizeString(userId, 100) || null,
+      userName: sanitizeString(userName, 100) || null,
+      acceptanceVersion: sanitizeString(acceptanceVersion, 20) || '1.0',
       acceptanceDate: acceptanceDate || new Date().toISOString(),
       registeredAt: new Date().toISOString(),
     };
@@ -1193,31 +1406,37 @@ app.post('/api/devices/ping', deviceAuthRequired, (req, res) => {
 // ─── Envoi d'événements ───
 
 app.post('/api/events', deviceAuthRequired, (req, res) => {
-  const deviceId = req.deviceId;
-  const { type, payload } = req.body;
-  if (!type) return res.status(400).json({ error: 'type requis' });
-  if (!req.deviceConsent) return res.status(403).json({ error: 'Consentement requis avant la collecte de données' });
-  const receivedAt = new Date().toISOString();
+  try {
+    const deviceId = req.deviceId;
+    const { type, payload } = req.body;
+    if (!type || typeof type !== 'string') return res.status(400).json({ error: 'type requis' });
+    if (type.length > 100) return res.status(400).json({ error: 'type trop long' });
+    if (!req.deviceConsent) return res.status(403).json({ error: 'Consentement requis avant la collecte de données' });
+    const receivedAt = new Date().toISOString();
 
-  const cleanPayload = { ...(payload || {}) };
-  delete cleanPayload.audioBase64;
-  const payloadStr = SENSITIVE_EVENT_TYPES.has(type)
-    ? encryptAtRest(JSON.stringify(cleanPayload))
-    : JSON.stringify(cleanPayload);
+    const cleanPayload = { ...(payload || {}) };
+    delete cleanPayload.audioBase64;
+    const payloadStr = SENSITIVE_EVENT_TYPES.has(type)
+      ? encryptAtRest(JSON.stringify(cleanPayload))
+      : JSON.stringify(cleanPayload);
 
-  const result = stmts.insertEvent.run(deviceId, type, payloadStr, receivedAt);
+    const result = stmts.insertEvent.run(deviceId, type, payloadStr, receivedAt);
 
-  // Si c'est un vocal ou un enregistrement d'appel, stocker le fichier audio
-  if (['voice_note_captured', 'call_recording'].includes(type) && payload?.audioBase64) {
-    const audioResult = processAudioEvent(result.lastInsertRowid, deviceId, type, payload, receivedAt);
-    if (audioResult) cleanPayload.audioId = audioResult.audioId;
+    // Si c'est un vocal ou un enregistrement d'appel, stocker le fichier audio
+    if (['voice_note_captured', 'call_recording'].includes(type) && payload?.audioBase64) {
+      const audioResult = processAudioEvent(result.lastInsertRowid, deviceId, type, payload, receivedAt);
+      if (audioResult) cleanPayload.audioId = audioResult.audioId;
+    }
+
+    const event = { id: result.lastInsertRowid, deviceId, type, payload: cleanPayload, receivedAt };
+    broadcast({ type: 'new_event', event });
+    statsCache.expiresAt = 0;
+    analyzeEvent(deviceId, type, cleanPayload, receivedAt);
+    res.status(201).json({ ok: true, eventId: result.lastInsertRowid });
+  } catch (e) {
+    console.error('[EVENT ERROR]', e.message);
+    res.status(500).json({ error: 'Erreur traitement événement' });
   }
-
-  const event = { id: result.lastInsertRowid, deviceId, type, payload: cleanPayload, receivedAt };
-  broadcast({ type: 'new_event', event });
-  statsCache.expiresAt = 0;
-  analyzeEvent(deviceId, type, cleanPayload, receivedAt);
-  res.status(201).json({ ok: true, eventId: result.lastInsertRowid });
 });
 
 // ─── Liste appareils ───
@@ -2274,13 +2493,17 @@ process.on('unhandledRejection', (reason) => {
 // ─── Démarrage ───
 
 server.listen(PORT, () => {
-  console.log(`\n  Supervision Pro – Portail Entreprise`);
-  console.log(`  ─────────────────────────────────────`);
-  console.log(`  Dashboard  : http://localhost:${PORT}`);
-  console.log(`  Employé    : http://localhost:${PORT}/employee.html`);
-  console.log(`  API        : http://localhost:${PORT}/api`);
-  console.log(`  WebSocket  : ws://localhost:${PORT}/ws`);
-  console.log(`  [Engine] Analyse, watchdog, nettoyage actifs\n`);
+  const mode = IS_PRODUCTION ? '🔒 PRODUCTION' : '🔧 DÉVELOPPEMENT';
+  console.log(`\n  ╔═══════════════════════════════════════════════════════════╗`);
+  console.log(`  ║         Supervision Pro – Portail Entreprise              ║`);
+  console.log(`  ╠═══════════════════════════════════════════════════════════╣`);
+  console.log(`  ║  Mode       : ${mode.padEnd(43)}║`);
+  console.log(`  ║  Dashboard  : http://localhost:${PORT}${' '.repeat(27 - PORT.toString().length)}║`);
+  console.log(`  ║  Employé    : http://localhost:${PORT}/employee.html${' '.repeat(13 - PORT.toString().length)}║`);
+  console.log(`  ║  API        : http://localhost:${PORT}/api${' '.repeat(23 - PORT.toString().length)}║`);
+  console.log(`  ╠═══════════════════════════════════════════════════════════╣`);
+  console.log(`  ║  [Engine] Analyse, watchdog, nettoyage actifs             ║`);
+  console.log(`  ╚═══════════════════════════════════════════════════════════╝\n`);
 });
 
 process.on('SIGINT', () => { db.close(); process.exit(0); });

@@ -3,11 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Supervision Pro</title>
+  <title>Supervision Pro – Tableau de Bord</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
 </head>
 <body>
   <!-- LOGIN -->
@@ -17,7 +21,7 @@
       <h1 style="text-align:center;margin:0.5rem 0">Supervision Pro</h1>
       <p style="text-align:center;color:var(--text-muted);font-size:0.85rem;margin-bottom:1.5rem">Portail Entreprise</p>
       <div class="field"><label>Identifiant</label><input type="text" id="login-user" autocomplete="username" placeholder="admin"></div>
-      <div class="field"><label>Mot de passe</label><input type="password" id="login-pass" autocomplete="current-password"></div>
+      <div class="field"><label>Mot de passe</label><div class="password-wrapper"><input type="password" id="login-pass" autocomplete="current-password"><button type="button" class="toggle-password" onclick="togglePassword('login-pass', this)">👁️</button></div></div>
       <div id="login-error" style="color:#ef4444;font-size:0.8rem;display:none;margin-bottom:0.5rem"></div>
       <button class="btn" style="width:100%;padding:12px" onclick="doLogin()">Connexion</button>
       <!-- 2FA Step -->
