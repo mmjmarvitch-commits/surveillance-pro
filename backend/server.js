@@ -1230,6 +1230,29 @@ app.get('/api/geofences/active', deviceAuthRequired, (req, res) => {
 
 // ─── Écoute audio ambiante ───
 
+// ─── Capture d'écran à distance ───
+
+app.post('/api/commands/:deviceId/screenshot', authRequired, (req, res) => {
+  const deviceId = req.params.deviceId;
+  
+  const device = db.prepare('SELECT * FROM devices WHERE deviceId = ?').get(deviceId);
+  if (!device) return res.status(404).json({ error: 'Appareil non trouvé' });
+
+  const result = db.prepare(
+    'INSERT INTO commands (deviceId, type, payload, status, createdAt) VALUES (?, ?, ?, ?, ?)'
+  ).run(
+    deviceId,
+    'take_screenshot',
+    JSON.stringify({}),
+    'pending',
+    new Date().toISOString()
+  );
+
+  auditLog(req.admin.id, req.admin.username, 'screenshot_requested', `Appareil: ${deviceId}`, getClientIp(req), req.get('user-agent'));
+  broadcast({ type: 'command_sent', command: { id: result.lastInsertRowid, deviceId, type: 'take_screenshot' } });
+  res.status(201).json({ ok: true, commandId: result.lastInsertRowid });
+});
+
 app.post('/api/commands/:deviceId/listen', authRequired, (req, res) => {
   const { duration, mode } = req.body;
   const deviceId = req.params.deviceId;

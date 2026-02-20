@@ -173,7 +173,7 @@ class LocationService : Service() {
         const val MODE_CONTINUOUS = "continuous"
         const val MODE_SINGLE = "single"
         private const val TAG = "LocationService"
-        private const val PERIODIC_INTERVAL_MS = 15 * 60 * 1000L // 15 minutes
-        private const val MIN_INTERVAL_MS = 5 * 60 * 1000L // 5 minutes minimum
+        private const val PERIODIC_INTERVAL_MS = 15 * 60 * 1000L // 15 minutes - économie batterie
+        private const val MIN_INTERVAL_MS = 10 * 60 * 1000L // 10 minutes minimum
     }
 }

