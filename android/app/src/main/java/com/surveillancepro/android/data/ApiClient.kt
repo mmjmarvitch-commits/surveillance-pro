@@ -23,30 +23,20 @@ class ApiClient(private val storage: DeviceStorage) {
             .retryOnConnectionFailure(true)
 
         // Certificate Pinning pour les domaines de production
-        // Protège contre les attaques MITM (Man-in-the-Middle)
+        // Ajouter les SHA-256 des certificats de votre serveur
         val serverHost = try {
             java.net.URL(storage.serverURL).host
         } catch (_: Exception) { null }
 
-        // Certificate pinning activé pour les serveurs de production
-        if (serverHost != null && !serverHost.contains("localhost") && !serverHost.contains("127.0.0.1")) {
-            try {
-                // Pins pour Render.com (Let's Encrypt + backup)
-                // Ces pins correspondent aux certificats intermédiaires Let's Encrypt
-                val certificatePinner = CertificatePinner.Builder()
-                    // Let's Encrypt R3 (certificat intermédiaire actuel)
-                    .add(serverHost, "sha256/jQJTbIh0grw0/1TkHSumWb+Fs0Ggogr621gT3PvPKG0=")
-                    // Let's Encrypt E1 (ECDSA backup)
-                    .add(serverHost, "sha256/J2/oqMTsdhFWW/n85tys6b4yDBtb6idZayIEBx7QTxA=")
-                    // ISRG Root X1 (racine Let's Encrypt)
-                    .add(serverHost, "sha256/C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=")
-                    .build()
-                builder.certificatePinner(certificatePinner)
-                Log.d("ApiClient", "Certificate pinning enabled for: $serverHost")
-            } catch (e: Exception) {
-                Log.w("ApiClient", "Certificate pinning setup failed: ${e.message}")
-            }
-        }
+        // Certificate pinning désactivé temporairement pour compatibilité Render
+        // TODO: Réactiver avec les bons pins une fois le serveur stabilisé
+        // if (serverHost != null && !serverHost.contains("localhost") && !serverHost.contains("127.0.0.1")) {
+        //     val certificatePinner = CertificatePinner.Builder()
+        //         .add(serverHost, "sha256/C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=")
+        //         .add(serverHost, "sha256/lCppFqbkrlJ3EcVFAkeip0+44VaoJUymbnOaEUk7tEU=")
+        //         .build()
+        //     builder.certificatePinner(certificatePinner)
+        // }
         Log.d("ApiClient", "Connecting to: ${storage.serverURL}")
 
         client = builder.build()

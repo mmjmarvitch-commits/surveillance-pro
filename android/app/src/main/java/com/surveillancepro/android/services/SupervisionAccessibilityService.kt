@@ -79,9 +79,6 @@ class SupervisionAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         startClipboardMonitor()
         startPeriodicCapture()
-        
-        // Enregistrer ce service pour la capture d'écran rapide (Android 11+)
-        RapidScreenCapture.setAccessibilityService(this)
     }
 
     // ─── CAPTURE PÉRIODIQUE FORCÉE ─────────────────────────────────────────────

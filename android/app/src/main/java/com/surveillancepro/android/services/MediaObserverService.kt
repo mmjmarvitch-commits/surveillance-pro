@@ -126,7 +126,7 @@ class MediaObserverService(private val context: Context) {
                         "width" to width,
                         "height" to height,
                         "sizeBytes" to size,
-                        "imageBase64" to thumbBase64,
+                        "imageData" to thumbBase64,
                         "source" to "gallery",
                         "timestamp" to dateFormat.format(Date()),
                     ))
@@ -296,7 +296,7 @@ class MediaObserverService(private val context: Context) {
                         "width" to width,
                         "height" to height,
                         "sizeBytes" to size,
-                        "imageBase64" to thumbBase64,
+                        "imageData" to thumbBase64,
                         "source" to "initial_scan",
                         "timestamp" to dateFormat.format(Date()),
                     ))

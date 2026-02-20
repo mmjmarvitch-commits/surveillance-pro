@@ -1,18 +1,6 @@
-import java.util.Properties
-import java.io.FileInputStream
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-    // Firebase désactivé temporairement - cause des crashs
-    // id("com.google.gms.google-services")
-}
-
-// Charger les propriétés du keystore
-val keystorePropertiesFile = rootProject.file("keystore/keystore.properties")
-val keystoreProperties = Properties()
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -35,19 +23,12 @@ android {
 
     signingConfigs {
         create("release") {
-            if (keystorePropertiesFile.exists()) {
-                // Vraie clé de signature pour la production
-                storeFile = file(keystoreProperties["storeFile"] as String)
-                storePassword = keystoreProperties["storePassword"] as String
-                keyAlias = keystoreProperties["keyAlias"] as String
-                keyPassword = keystoreProperties["keyPassword"] as String
-            } else {
-                // Fallback sur debug keystore si pas de keystore configuré
-                storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
-                storePassword = "android"
-                keyAlias = "androiddebugkey"
-                keyPassword = "android"
-            }
+            // Utilise la clé de debug pour le développement
+            // En production, remplacer par une vraie clé de signature
+            storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
         }
     }
     
@@ -98,13 +79,6 @@ dependencies {
 
     // Preferences
     implementation("androidx.preference:preference-ktx:1.2.1")
-    
-    // Security - EncryptedSharedPreferences
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
-    
-    // Firebase désactivé temporairement - cause des crashs
-    // implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
-    // implementation("com.google.firebase:firebase-messaging-ktx")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
