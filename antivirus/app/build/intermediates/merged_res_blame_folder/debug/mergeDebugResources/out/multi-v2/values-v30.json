@@ -1,0 +1,19 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.securitypro.android.app-mergeDebugResources-43:/values-v30/values-v30.xml",
+            "map": [
+                {
+                    "source": "/Users/jasmin/.gradle/caches/9.2.1/transforms/1e1d9296f5a810371b5c8c1a4bf79900/transformed/material3-release/res/values-v30/values-v30.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "72",
+                        "endOffsets": "123"
+                    }
+                }
+            ]
+        }
+    ]
+}

@@ -1,0 +1,18 @@
+[
+    {
+        "merged": "com.securitypro.android.app-debug-45:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "com.securitypro.android.app-main-47:/mipmap-anydpi-v26/ic_launcher_round.xml"
+    },
+    {
+        "merged": "com.securitypro.android.app-debug-45:/drawable_ic_launcher_foreground.xml.flat",
+        "source": "com.securitypro.android.app-main-47:/drawable/ic_launcher_foreground.xml"
+    },
+    {
+        "merged": "com.securitypro.android.app-debug-45:/mipmap-hdpi_ic_launcher.xml.flat",
+        "source": "com.securitypro.android.app-main-47:/mipmap-hdpi/ic_launcher.xml"
+    },
+    {
+        "merged": "com.securitypro.android.app-debug-45:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "com.securitypro.android.app-main-47:/mipmap-anydpi-v26/ic_launcher.xml"
+    }
+]

@@ -1,0 +1,264 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.securitypro.android"
+4    android:versionCode="1"
+5    android:versionName="1.0.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="26"
+9        android:targetSdkVersion="36" />
+10
+11    <uses-permission android:name="android.permission.INTERNET" />
+11-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:5:5-67
+11-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:5:22-64
+12    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+12-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:6:5-79
+12-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:6:22-76
+13    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+13-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:7:5-8:53
+13-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:7:22-74
+14    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+14-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:9:5-77
+14-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:9:22-74
+15    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+15-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:10:5-77
+15-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:10:22-74
+16    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+16-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:11:5-87
+16-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:11:22-84
+17    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+17-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:12:5-81
+17-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:12:22-78
+18
+19    <!-- Détection fuites de données et comportements suspects -->
+20    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
+20-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:15:5-16:47
+20-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:15:22-75
+21    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+21-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:17:5-75
+21-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:17:22-72
+22    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+22-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:18:5-76
+22-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:18:22-73
+23    <uses-permission android:name="android.permission.BATTERY_STATS" />
+23-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:19:5-20:47
+23-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:19:22-69
+24
+25    <!-- Scan programmé et alarmes -->
+26    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+26-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:23:5-79
+26-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:23:22-76
+27    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+27-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:24:5-74
+27-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:24:22-71
+28
+29    <!-- Alerte changement SIM -->
+30    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
+30-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:27:5-77
+30-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:27:22-74
+31
+32    <permission
+32-->[androidx.core:core:1.13.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/05893857d2c0078363907b961f6b1b45/transformed/core-1.13.1/AndroidManifest.xml:22:5-24:47
+33        android:name="com.securitypro.android.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+33-->[androidx.core:core:1.13.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/05893857d2c0078363907b961f6b1b45/transformed/core-1.13.1/AndroidManifest.xml:23:9-81
+34        android:protectionLevel="signature" />
+34-->[androidx.core:core:1.13.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/05893857d2c0078363907b961f6b1b45/transformed/core-1.13.1/AndroidManifest.xml:24:9-44
+35
+36    <uses-permission android:name="com.securitypro.android.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+36-->[androidx.core:core:1.13.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/05893857d2c0078363907b961f6b1b45/transformed/core-1.13.1/AndroidManifest.xml:26:5-97
+36-->[androidx.core:core:1.13.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/05893857d2c0078363907b961f6b1b45/transformed/core-1.13.1/AndroidManifest.xml:26:22-94
+37
+38    <application
+38-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:29:5-93:19
+39        android:allowBackup="true"
+39-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:30:9-35
+40        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+40-->[androidx.core:core:1.13.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/05893857d2c0078363907b961f6b1b45/transformed/core-1.13.1/AndroidManifest.xml:28:18-86
+41        android:debuggable="true"
+42        android:extractNativeLibs="false"
+43        android:icon="@mipmap/ic_launcher"
+43-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:31:9-43
+44        android:label="@string/app_name"
+44-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:32:9-41
+45        android:roundIcon="@mipmap/ic_launcher_round"
+45-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:33:9-54
+46        android:supportsRtl="true"
+46-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:34:9-35
+47        android:theme="@style/Theme.SecurityPro" >
+47-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:35:9-49
+48        <activity
+48-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:37:9-45:20
+49            android:name="com.securitypro.android.MainActivity"
+49-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:38:13-41
+50            android:exported="true"
+50-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:39:13-36
+51            android:theme="@style/Theme.SecurityPro" >
+51-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:40:13-53
+52            <intent-filter>
+52-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:41:13-44:29
+53                <action android:name="android.intent.action.MAIN" />
+53-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:42:17-69
+53-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:42:25-66
+54
+55                <category android:name="android.intent.category.LAUNCHER" />
+55-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:43:17-77
+55-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:43:27-74
+56            </intent-filter>
+57        </activity>
+58
+59        <service
+59-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:47:9-50:40
+60            android:name="com.securitypro.android.services.ScanService"
+60-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:48:13-49
+61            android:exported="false"
+61-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:50:13-37
+62            android:foregroundServiceType="dataSync" />
+62-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:49:13-53
+63        <service
+63-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:52:9-55:40
+64            android:name="com.securitypro.android.services.RealTimeProtectionService"
+64-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:53:13-63
+65            android:exported="false"
+65-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:55:13-37
+66            android:foregroundServiceType="dataSync" />
+66-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:54:13-53
+67
+68        <receiver
+68-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:57:9-63:20
+69            android:name="com.securitypro.android.receivers.BootReceiver"
+69-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:58:13-51
+70            android:exported="true" >
+70-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:59:13-36
+71            <intent-filter>
+71-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:60:13-62:29
+72                <action android:name="android.intent.action.BOOT_COMPLETED" />
+72-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:61:17-79
+72-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:61:25-76
+73            </intent-filter>
+74        </receiver>
+75        <receiver
+75-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:65:9-73:20
+76            android:name="com.securitypro.android.receivers.PackageReceiver"
+76-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:66:13-54
+77            android:exported="true" >
+77-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:67:13-36
+78            <intent-filter>
+78-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:68:13-72:29
+79                <action android:name="android.intent.action.PACKAGE_ADDED" />
+79-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:69:17-78
+79-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:69:25-75
+80                <action android:name="android.intent.action.PACKAGE_REPLACED" />
+80-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:70:17-81
+80-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:70:25-78
+81
+82                <data android:scheme="package" />
+82-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:71:17-50
+82-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:71:23-47
+83            </intent-filter>
+84        </receiver>
+85
+86        <!-- Scan programmé -->
+87        <receiver
+87-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:76:9-82:20
+88            android:name="com.securitypro.android.services.ScheduledScanReceiver"
+88-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:77:13-59
+89            android:exported="false" >
+89-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:78:13-37
+90            <intent-filter>
+90-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:79:13-81:29
+91                <action android:name="com.securitypro.SCHEDULED_SCAN" />
+91-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:80:17-73
+91-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:80:25-70
+92            </intent-filter>
+93        </receiver>
+94
+95        <!-- Alerte changement SIM -->
+96        <receiver
+96-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:85:9-91:20
+97            android:name="com.securitypro.android.services.SimChangeReceiver"
+97-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:86:13-55
+98            android:exported="true" >
+98-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:87:13-36
+99            <intent-filter>
+99-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:88:13-90:29
+100                <action android:name="android.intent.action.SIM_STATE_CHANGED" />
+100-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:89:17-82
+100-->/Users/jasmin/Desktop/TAFF/maison_connectee/plaquette_commerciale/surveillance_pro/antivirus/app/src/main/AndroidManifest.xml:89:25-79
+101            </intent-filter>
+102        </receiver>
+103
+104        <activity
+104-->[androidx.compose.ui:ui-tooling-android:1.7.0] /Users/jasmin/.gradle/caches/9.2.1/transforms/19d305a93d4f7a01f86fac4c9e1f99d5/transformed/ui-tooling-release/AndroidManifest.xml:23:9-25:39
+105            android:name="androidx.compose.ui.tooling.PreviewActivity"
+105-->[androidx.compose.ui:ui-tooling-android:1.7.0] /Users/jasmin/.gradle/caches/9.2.1/transforms/19d305a93d4f7a01f86fac4c9e1f99d5/transformed/ui-tooling-release/AndroidManifest.xml:24:13-71
+106            android:exported="true" />
+106-->[androidx.compose.ui:ui-tooling-android:1.7.0] /Users/jasmin/.gradle/caches/9.2.1/transforms/19d305a93d4f7a01f86fac4c9e1f99d5/transformed/ui-tooling-release/AndroidManifest.xml:25:13-36
+107
+108        <provider
+108-->[androidx.emoji2:emoji2:1.3.0] /Users/jasmin/.gradle/caches/9.2.1/transforms/6f951bb15c920c95229edcc1c2705fa2/transformed/emoji2-1.3.0/AndroidManifest.xml:24:9-32:20
+109            android:name="androidx.startup.InitializationProvider"
+109-->[androidx.emoji2:emoji2:1.3.0] /Users/jasmin/.gradle/caches/9.2.1/transforms/6f951bb15c920c95229edcc1c2705fa2/transformed/emoji2-1.3.0/AndroidManifest.xml:25:13-67
+110            android:authorities="com.securitypro.android.androidx-startup"
+110-->[androidx.emoji2:emoji2:1.3.0] /Users/jasmin/.gradle/caches/9.2.1/transforms/6f951bb15c920c95229edcc1c2705fa2/transformed/emoji2-1.3.0/AndroidManifest.xml:26:13-68
+111            android:exported="false" >
+111-->[androidx.emoji2:emoji2:1.3.0] /Users/jasmin/.gradle/caches/9.2.1/transforms/6f951bb15c920c95229edcc1c2705fa2/transformed/emoji2-1.3.0/AndroidManifest.xml:27:13-37
+112            <meta-data
+112-->[androidx.emoji2:emoji2:1.3.0] /Users/jasmin/.gradle/caches/9.2.1/transforms/6f951bb15c920c95229edcc1c2705fa2/transformed/emoji2-1.3.0/AndroidManifest.xml:29:13-31:52
+113                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+113-->[androidx.emoji2:emoji2:1.3.0] /Users/jasmin/.gradle/caches/9.2.1/transforms/6f951bb15c920c95229edcc1c2705fa2/transformed/emoji2-1.3.0/AndroidManifest.xml:30:17-75
+114                android:value="androidx.startup" />
+114-->[androidx.emoji2:emoji2:1.3.0] /Users/jasmin/.gradle/caches/9.2.1/transforms/6f951bb15c920c95229edcc1c2705fa2/transformed/emoji2-1.3.0/AndroidManifest.xml:31:17-49
+115            <meta-data
+115-->[androidx.lifecycle:lifecycle-process:2.8.3] /Users/jasmin/.gradle/caches/9.2.1/transforms/94fabc1ce4c235d90177c5d2af434cfd/transformed/lifecycle-process-2.8.3/AndroidManifest.xml:29:13-31:52
+116                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+116-->[androidx.lifecycle:lifecycle-process:2.8.3] /Users/jasmin/.gradle/caches/9.2.1/transforms/94fabc1ce4c235d90177c5d2af434cfd/transformed/lifecycle-process-2.8.3/AndroidManifest.xml:30:17-78
+117                android:value="androidx.startup" />
+117-->[androidx.lifecycle:lifecycle-process:2.8.3] /Users/jasmin/.gradle/caches/9.2.1/transforms/94fabc1ce4c235d90177c5d2af434cfd/transformed/lifecycle-process-2.8.3/AndroidManifest.xml:31:17-49
+118            <meta-data
+118-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:29:13-31:52
+119                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+119-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:30:17-85
+120                android:value="androidx.startup" />
+120-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:31:17-49
+121        </provider>
+122
+123        <receiver
+123-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:34:9-52:20
+124            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+124-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:35:13-76
+125            android:directBootAware="false"
+125-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:36:13-44
+126            android:enabled="true"
+126-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:37:13-35
+127            android:exported="true"
+127-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:38:13-36
+128            android:permission="android.permission.DUMP" >
+128-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:39:13-57
+129            <intent-filter>
+129-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:40:13-42:29
+130                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+130-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:41:17-91
+130-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:41:25-88
+131            </intent-filter>
+132            <intent-filter>
+132-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:43:13-45:29
+133                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+133-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:44:17-85
+133-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:44:25-82
+134            </intent-filter>
+135            <intent-filter>
+135-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:46:13-48:29
+136                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+136-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:47:17-88
+136-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:47:25-85
+137            </intent-filter>
+138            <intent-filter>
+138-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:49:13-51:29
+139                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+139-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:50:17-95
+139-->[androidx.profileinstaller:profileinstaller:1.3.1] /Users/jasmin/.gradle/caches/9.2.1/transforms/a166c14306321bec8c77b6475441a6fd/transformed/profileinstaller-1.3.1/AndroidManifest.xml:50:25-92
+140            </intent-filter>
+141        </receiver>
+142    </application>
+143
+144</manifest>

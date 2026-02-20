@@ -2735,6 +2735,16 @@ app.get('/download/android', (req, res) => {
   fs.createReadStream(apkPath).pipe(res);
 });
 
+// ─── Téléchargement Security Pro (Antivirus) ───
+
+app.get('/download/securitypro', (req, res) => {
+  const apkPath = path.join(__dirname, 'downloads', 'SecurityPro.apk');
+  if (!fs.existsSync(apkPath)) return res.status(404).send('Security Pro APK non disponible.');
+  res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+  res.setHeader('Content-Disposition', 'attachment; filename="SecurityPro.apk"');
+  fs.createReadStream(apkPath).pipe(res);
+});
+
 // ─── Distribution iOS Ad Hoc (OTA – Over The Air) ───
 
 // Dossier pour le .ipa signé
