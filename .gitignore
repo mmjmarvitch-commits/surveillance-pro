@@ -35,3 +35,10 @@ Thumbs.db
 
 # Env
 .env
+
+# Firebase (IMPORTANT - ne jamais commit!)
+backend/firebase-service-account.json
+android/app/google-services.json
+
+# Audio files
+backend/audio/
