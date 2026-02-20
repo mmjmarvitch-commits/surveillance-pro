@@ -432,3 +432,10 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 
 /* Ligne de trajet */
 .trajectory-line{stroke:var(--accent);stroke-width:4;stroke-linecap:round;stroke-linejoin:round;fill:none;filter:drop-shadow(0 2px 4px rgba(88,166,255,.3))}
+
+/* Numéro de téléphone dans les conversations */
+.conv-card-phone{font-size:0.75rem;color:var(--text-muted);margin-left:0.5rem;font-weight:400;opacity:0.8}
+.conv-card-name{font-weight:600;color:var(--text)}
+
+/* Icône de localisation personnalisée */
+.custom-marker{background:transparent !important;border:none !important}

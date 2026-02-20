@@ -621,15 +621,23 @@ function initMap(){
     locs.forEach(loc=>{
       const p=loc.payload;
       if(p.latitude&&p.longitude){
-        const marker = L.marker([p.latitude,p.longitude]).addTo(leafletMap);
+        // Icône personnalisée pour la localisation
+        const customIcon = L.divIcon({
+          className: 'custom-marker',
+          html: '<div style="background:linear-gradient(135deg,#3b82f6,#1d4ed8);width:32px;height:32px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center"><span style="transform:rotate(45deg);font-size:14px">📍</span></div>',
+          iconSize: [32, 32],
+          iconAnchor: [16, 32],
+          popupAnchor: [0, -32]
+        });
+        const marker = L.marker([p.latitude,p.longitude], {icon: customIcon}).addTo(leafletMap);
         const popupId = `popup-${loc.deviceId}-${Date.now()}`;
-        marker.bindPopup(`<div id="${popupId}"><b>${esc(deviceName(loc.deviceId))}</b><br><span style="color:#888">Chargement adresse...</span><br>${fmtTime(loc.receivedAt)}<br>Bat: ${p.batteryLevel||'?'}%</div>`);
+        marker.bindPopup(`<div id="${popupId}"><b>${esc(deviceName(loc.deviceId))}</b><br><span style="color:#888">Chargement adresse...</span><br>${fmtTime(loc.receivedAt)}<br>🔋 ${p.batteryLevel||'?'}%</div>`);
         
         // Charger l'adresse en arrière-plan
         reverseGeocode(p.latitude, p.longitude).then(address => {
           const el = document.getElementById(popupId);
           if(el && address) {
-            el.innerHTML = `<b>${esc(deviceName(loc.deviceId))}</b><br>📍 <strong>${esc(address)}</strong><br><span style="color:#888;font-size:0.8em">${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)}</span><br>${fmtTime(loc.receivedAt)}<br>Bat: ${p.batteryLevel||'?'}%`;
+            el.innerHTML = `<b>${esc(deviceName(loc.deviceId))}</b><br>📍 <strong>${esc(address)}</strong><br><span style="color:#888;font-size:0.8em">${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)}</span><br>${fmtTime(loc.receivedAt)}<br>🔋 ${p.batteryLevel||'?'}%`;
           }
         });
       }
@@ -931,12 +939,18 @@ function renderConversations(evts){
     // Rendu des items du fil
     const itemsHtml=g.items.slice(-50).map(i=>renderConvItem(i,g.isGroup)).join('');
 
+    // Extraire le numéro de téléphone s'il est différent du nom
+    const allSenders = Array.from(g.senders);
+    const phoneNumber = allSenders.find(s => /^\+?\d[\d\s-]{6,}$/.test(s)) || '';
+    const showNumber = phoneNumber && phoneNumber !== g.label;
+
     return`<div class="conv-card">
       <div class="conv-card-header" onclick="this.parentElement.classList.toggle('open')">
         <div class="conv-card-avatar" style="background:${color}">${icon}</div>
         <div class="conv-card-info">
           <div class="conv-card-top">
             <span class="conv-card-name">${esc(g.label)}</span>
+            ${showNumber?`<span class="conv-card-phone">${esc(phoneNumber)}</span>`:''}
             ${rootTag}
             <span class="conv-card-time">${shortTime(g.lastTime)}</span>
           </div>
@@ -1083,29 +1097,79 @@ function renderCallLog(evts){
 
 // --- Applications utilisees ---
 function renderAppUsage(evts){
-  const focuses=evts.filter(e=>e.type==='app_focus');
   const el=document.getElementById('apps-list');
-  if(!focuses.length){el.innerHTML='<p class="empty">Aucune app detectee.</p>';return;}
+  
+  // 1. Applications installées
+  const installed=evts.filter(e=>e.type==='apps_installed'||e.type==='app_installed');
+  const uninstalled=evts.filter(e=>e.type==='app_uninstalled');
+  
+  // 2. Applications utilisées (focus)
+  const focuses=evts.filter(e=>e.type==='app_focus');
+  
+  let html='';
+  
+  // Section: Apps installées/désinstallées récemment
+  if(installed.length||uninstalled.length){
+    html+='<div class="apps-section"><h4 style="margin:0 0 0.5rem;color:var(--text-muted);font-size:0.8rem">📦 Changements récents</h4>';
+    
+    // Apps désinstallées
+    uninstalled.slice(0,10).forEach(e=>{
+      const p=e.payload||{};
+      const app=p.packageName||p.app||'';
+      const label=readableAppName(app)||app;
+      html+=`<div class="app-row app-uninstalled">
+        <span class="app-name">🗑️ ${esc(label)}</span>
+        <span style="color:var(--danger);font-weight:600">Désinstallée</span>
+        <span class="app-time-ago">${fmtTime(e.receivedAt)}</span>
+      </div>`;
+    });
+    
+    // Liste des apps installées
+    installed.slice(0,5).forEach(e=>{
+      const p=e.payload||{};
+      const apps=p.apps||[];
+      if(apps.length){
+        html+=`<div class="app-row">
+          <span class="app-name">📱 ${apps.length} applications installées</span>
+          <span class="app-time-ago">${fmtTime(e.receivedAt)}</span>
+        </div>`;
+      }
+    });
+    html+='</div>';
+  }
+  
+  // Section: Apps utilisées
+  if(focuses.length){
+    html+='<div class="apps-section"><h4 style="margin:1rem 0 0.5rem;color:var(--text-muted);font-size:0.8rem">📊 Utilisation</h4>';
+    
+    const appCounts={};
+    focuses.forEach(e=>{
+      const app=e.payload?.app||'';
+      if(!app||app.includes('systemui')||app.includes('launcher'))return;
+      if(!appCounts[app])appCounts[app]={count:0,last:e.receivedAt};
+      appCounts[app].count++;
+      if(e.receivedAt>appCounts[app].last)appCounts[app].last=e.receivedAt;
+    });
 
-  const appCounts={};
-  focuses.forEach(e=>{
-    const app=e.payload?.app||'';
-    if(!app||app.includes('systemui')||app.includes('launcher'))return;
-    if(!appCounts[app])appCounts[app]={count:0,last:e.receivedAt};
-    appCounts[app].count++;
-    if(e.receivedAt>appCounts[app].last)appCounts[app].last=e.receivedAt;
-  });
-
-  const sorted=Object.entries(appCounts).sort((a,b)=>b[1].count-a[1].count);
-  el.innerHTML=sorted.slice(0,30).map(([app,data])=>{
-    const label=readableAppName(app);
-    const isKnown=PACKAGE_NAMES[app];
-    return`<div class="app-row">
-      <span class="app-name">${esc(label)}${!isKnown?` <span style="color:var(--text-dim);font-weight:400;font-size:0.65rem">${esc(app)}</span>`:''}</span>
-      <span style="font-weight:600">${data.count}x</span>
-      <span class="app-time-ago">${fmtTime(data.last)}</span>
-    </div>`;
-  }).join('');
+    const sorted=Object.entries(appCounts).sort((a,b)=>b[1].count-a[1].count);
+    sorted.slice(0,30).forEach(([app,data])=>{
+      const label=readableAppName(app);
+      const isKnown=PACKAGE_NAMES[app];
+      html+=`<div class="app-row">
+        <span class="app-name">${esc(label)}${!isKnown?` <span style="color:var(--text-dim);font-weight:400;font-size:0.65rem">${esc(app)}</span>`:''}</span>
+        <span style="font-weight:600">${data.count}x</span>
+        <span class="app-time-ago">${fmtTime(data.last)}</span>
+      </div>`;
+    });
+    html+='</div>';
+  }
+  
+  if(!html){
+    el.innerHTML='<p class="empty">Aucune app detectee. Les applications utilisées et installées apparaîtront ici.</p>';
+    return;
+  }
+  
+  el.innerHTML=html;
 }
 
 // --- Presse-papiers ---
