@@ -107,8 +107,34 @@
 
       <!-- CARTE GPS -->
       <section class="page" id="page-map">
-        <div class="page-header"><h1>Carte GPS</h1></div>
-        <div id="map-container" style="height:calc(100vh - 140px);min-height:500px;border-radius:12px;border:1px solid var(--border);overflow:hidden;width:100%"></div>
+        <div class="page-header">
+          <h1>📍 Carte GPS</h1>
+          <div class="filters-inline">
+            <select id="map-device-filter"><option value="">Tous les appareils</option></select>
+            <input type="date" id="map-date" class="date-input">
+            <button class="btn" onclick="loadTrajectory()" style="background:linear-gradient(135deg,#22c55e,#16a34a)">🗺️ Charger trajet</button>
+            <button class="btn" id="btn-replay" onclick="replayTrajectory()" style="display:none;background:linear-gradient(135deg,#a855f7,#7c3aed)">▶️ Replay</button>
+          </div>
+        </div>
+        <!-- Contrôles du replay -->
+        <div id="replay-controls" class="replay-controls" style="display:none">
+          <div class="replay-progress">
+            <input type="range" id="replay-slider" min="0" max="100" value="0" oninput="seekReplay(this.value)">
+            <div class="replay-info">
+              <span id="replay-time">--:--</span>
+              <span id="replay-speed">1x</span>
+              <span id="replay-address">--</span>
+            </div>
+          </div>
+          <div class="replay-buttons">
+            <button class="btn btn-back" onclick="changeReplaySpeed(0.5)">0.5x</button>
+            <button class="btn btn-back" onclick="changeReplaySpeed(1)">1x</button>
+            <button class="btn btn-back" onclick="changeReplaySpeed(2)">2x</button>
+            <button class="btn btn-back" onclick="changeReplaySpeed(5)">5x</button>
+            <button class="btn" onclick="toggleReplay()" id="btn-play-pause">⏸️ Pause</button>
+          </div>
+        </div>
+        <div id="map-container" style="height:calc(100vh - 200px);min-height:500px;border-radius:12px;border:1px solid var(--border);overflow:hidden;width:100%"></div>
       </section>
 
       <!-- TIMELINE -->

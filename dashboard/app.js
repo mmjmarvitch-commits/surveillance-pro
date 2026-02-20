@@ -598,9 +598,24 @@ function showDeviceDetail(deviceId){
 }
 
 // ─── MAP ───
+// Variables pour le replay GPS
+let trajectoryData = [];
+let replayMarker = null;
+let replayPolyline = null;
+let replayIndex = 0;
+let replayInterval = null;
+let replaySpeed = 1;
+let isReplaying = false;
+
+// Initialiser le filtre de date
+document.getElementById('map-date').valueAsDate = new Date();
+
 function initMap(){
   if(!leafletMap){leafletMap=L.map('map-container').setView([48.8566,2.3522],5);}
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'OSM'}).addTo(leafletMap);
+  
+  // Remplir le filtre d'appareils
+  fillMapDeviceFilter();
   fetchJ('/api/locations/latest').then(locs=>{
     leafletMap.eachLayer(l=>{if(l instanceof L.Marker)leafletMap.removeLayer(l);});
     locs.forEach(loc=>{
@@ -622,6 +637,162 @@ function initMap(){
     if(locs.length){const b=locs.filter(l=>l.payload.latitude).map(l=>[l.payload.latitude,l.payload.longitude]);if(b.length)leafletMap.fitBounds(b,{padding:[30,30]});}
   }).catch(()=>{});
   setTimeout(()=>leafletMap.invalidateSize(),200);
+}
+
+// Remplir le filtre d'appareils pour la carte
+function fillMapDeviceFilter() {
+  const sel = document.getElementById('map-device-filter');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Tous les appareils</option>' + 
+    allDevices.map(d => `<option value="${esc(d.deviceId)}">${esc(d.deviceName || d.deviceId.slice(0,8))}</option>`).join('');
+}
+
+// Charger le trajet d'un appareil pour une date
+async function loadTrajectory() {
+  const deviceId = document.getElementById('map-device-filter').value;
+  const date = document.getElementById('map-date').value;
+  
+  if (!deviceId) {
+    showNotification('alert', 'Sélection requise', 'Veuillez sélectionner un appareil', '', null);
+    return;
+  }
+  
+  try {
+    const events = await fetchJ(`/api/timeline/${deviceId}?date=${date}`);
+    const locations = events.filter(e => e.type === 'location' && e.payload?.latitude);
+    
+    if (locations.length < 2) {
+      showNotification('alert', 'Pas assez de données', 'Moins de 2 positions GPS pour cette date', deviceId, null);
+      return;
+    }
+    
+    // Stocker les données du trajet
+    trajectoryData = locations.map(loc => {
+      const p = typeof loc.payload === 'string' ? JSON.parse(loc.payload) : loc.payload;
+      return {
+        lat: p.latitude,
+        lng: p.longitude,
+        time: new Date(loc.receivedAt),
+        accuracy: p.accuracy,
+        battery: p.batteryLevel
+      };
+    }).sort((a, b) => a.time - b.time);
+    
+    // Effacer les anciens éléments
+    if (replayMarker) { leafletMap.removeLayer(replayMarker); replayMarker = null; }
+    if (replayPolyline) { leafletMap.removeLayer(replayPolyline); replayPolyline = null; }
+    
+    // Dessiner le trajet complet
+    const coords = trajectoryData.map(p => [p.lat, p.lng]);
+    replayPolyline = L.polyline(coords, {
+      color: '#3b82f6',
+      weight: 4,
+      opacity: 0.8,
+      smoothFactor: 1
+    }).addTo(leafletMap);
+    
+    // Ajouter des marqueurs de début et fin
+    L.marker(coords[0], {
+      icon: L.divIcon({ className: 'start-marker', html: '🟢', iconSize: [24, 24] })
+    }).addTo(leafletMap).bindPopup(`<b>Départ</b><br>${trajectoryData[0].time.toLocaleTimeString('fr-FR')}`);
+    
+    L.marker(coords[coords.length - 1], {
+      icon: L.divIcon({ className: 'end-marker', html: '🔴', iconSize: [24, 24] })
+    }).addTo(leafletMap).bindPopup(`<b>Arrivée</b><br>${trajectoryData[trajectoryData.length - 1].time.toLocaleTimeString('fr-FR')}`);
+    
+    // Ajuster la vue
+    leafletMap.fitBounds(replayPolyline.getBounds(), { padding: [50, 50] });
+    
+    // Afficher les contrôles de replay
+    document.getElementById('btn-replay').style.display = 'inline-block';
+    document.getElementById('replay-slider').max = trajectoryData.length - 1;
+    
+    showNotification('location', 'Trajet chargé', `${trajectoryData.length} positions GPS`, deviceId, null);
+    
+  } catch (err) {
+    console.error('Erreur chargement trajet:', err);
+  }
+}
+
+// Démarrer le replay animé
+function replayTrajectory() {
+  if (trajectoryData.length < 2) return;
+  
+  // Afficher les contrôles
+  document.getElementById('replay-controls').style.display = 'block';
+  
+  // Créer le marqueur animé
+  if (replayMarker) leafletMap.removeLayer(replayMarker);
+  replayMarker = L.marker([trajectoryData[0].lat, trajectoryData[0].lng], {
+    icon: L.divIcon({
+      className: 'animated-marker-container',
+      html: '<div class="animated-marker"></div>',
+      iconSize: [20, 20],
+      iconAnchor: [10, 10]
+    })
+  }).addTo(leafletMap);
+  
+  replayIndex = 0;
+  isReplaying = true;
+  document.getElementById('btn-play-pause').textContent = '⏸️ Pause';
+  
+  // Démarrer l'animation
+  startReplayAnimation();
+}
+
+function startReplayAnimation() {
+  if (replayInterval) clearInterval(replayInterval);
+  
+  replayInterval = setInterval(() => {
+    if (!isReplaying || replayIndex >= trajectoryData.length - 1) {
+      if (replayIndex >= trajectoryData.length - 1) {
+        isReplaying = false;
+        document.getElementById('btn-play-pause').textContent = '▶️ Rejouer';
+      }
+      return;
+    }
+    
+    replayIndex++;
+    updateReplayPosition();
+  }, 500 / replaySpeed);
+}
+
+function updateReplayPosition() {
+  const point = trajectoryData[replayIndex];
+  if (!point || !replayMarker) return;
+  
+  // Déplacer le marqueur
+  replayMarker.setLatLng([point.lat, point.lng]);
+  
+  // Centrer la carte
+  leafletMap.panTo([point.lat, point.lng], { animate: true, duration: 0.3 });
+  
+  // Mettre à jour les infos
+  document.getElementById('replay-slider').value = replayIndex;
+  document.getElementById('replay-time').textContent = point.time.toLocaleTimeString('fr-FR');
+  document.getElementById('replay-speed').textContent = replaySpeed + 'x';
+  
+  // Charger l'adresse
+  reverseGeocode(point.lat, point.lng).then(addr => {
+    document.getElementById('replay-address').textContent = addr || `${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`;
+  });
+}
+
+function toggleReplay() {
+  isReplaying = !isReplaying;
+  document.getElementById('btn-play-pause').textContent = isReplaying ? '⏸️ Pause' : '▶️ Play';
+  if (isReplaying) startReplayAnimation();
+}
+
+function changeReplaySpeed(speed) {
+  replaySpeed = speed;
+  document.getElementById('replay-speed').textContent = speed + 'x';
+  if (isReplaying) startReplayAnimation();
+}
+
+function seekReplay(value) {
+  replayIndex = parseInt(value);
+  updateReplayPosition();
 }
 
 // ─── TIMELINE ───

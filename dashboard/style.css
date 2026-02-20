@@ -409,3 +409,26 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 .sound-wave span:nth-child(4){height:70%;animation-delay:0.3s}
 .sound-wave span:nth-child(5){height:40%;animation-delay:0.4s}
 @keyframes soundWave{0%,100%{transform:scaleY(0.5)}50%{transform:scaleY(1)}}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   REPLAY GPS - STYLE PREMIUM
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.replay-controls{background:linear-gradient(145deg,var(--surface) 0%,var(--surface2) 100%);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1rem 1.5rem;margin-bottom:1rem;box-shadow:var(--shadow-md)}
+.replay-progress{margin-bottom:0.75rem}
+.replay-progress input[type="range"]{width:100%;height:8px;border-radius:4px;background:var(--surface3);appearance:none;cursor:pointer}
+.replay-progress input[type="range"]::-webkit-slider-thumb{appearance:none;width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#4c8dff);box-shadow:0 2px 8px rgba(88,166,255,.4);cursor:pointer;transition:transform .15s}
+.replay-progress input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.2)}
+.replay-info{display:flex;justify-content:space-between;align-items:center;margin-top:0.5rem;font-size:0.8rem}
+#replay-time{font-weight:700;color:var(--accent);font-family:ui-monospace,monospace}
+#replay-speed{background:var(--surface3);padding:2px 8px;border-radius:4px;font-weight:600;color:var(--purple)}
+#replay-address{color:var(--text-muted);max-width:50%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.replay-buttons{display:flex;gap:0.5rem;flex-wrap:wrap}
+.replay-buttons .btn{padding:0.4rem 0.8rem;font-size:0.75rem}
+
+/* Marqueur animé sur la carte */
+.animated-marker{width:20px;height:20px;background:linear-gradient(135deg,#ef4444,#b91c1c);border-radius:50%;border:3px solid white;box-shadow:0 2px 10px rgba(239,68,68,.5);animation:markerPulse 1.5s ease-in-out infinite}
+@keyframes markerPulse{0%,100%{transform:scale(1);box-shadow:0 2px 10px rgba(239,68,68,.5)}50%{transform:scale(1.2);box-shadow:0 4px 20px rgba(239,68,68,.7)}}
+
+/* Ligne de trajet */
+.trajectory-line{stroke:var(--accent);stroke-width:4;stroke-linecap:round;stroke-linejoin:round;fill:none;filter:drop-shadow(0 2px 4px rgba(88,166,255,.3))}
