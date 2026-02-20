@@ -28,18 +28,16 @@ class ApiClient(private val storage: DeviceStorage) {
             java.net.URL(storage.serverURL).host
         } catch (_: Exception) { null }
 
-        if (serverHost != null && !serverHost.contains("localhost") && !serverHost.contains("127.0.0.1")) {
-            // En production, activer le certificate pinning
-            // Pour obtenir le pin: openssl s_client -connect votre-serveur.com:443 | openssl x509 -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | openssl enc -base64
-            val certificatePinner = CertificatePinner.Builder()
-                // Pins de backup (Let's Encrypt root certificates)
-                .add(serverHost, "sha256/C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=") // ISRG Root X1
-                .add(serverHost, "sha256/lCppFqbkrlJ3EcVFAkeip0+44VaoJUymbnOaEUk7tEU=") // Let's Encrypt E1
-                // Ajoutez ici le pin de votre certificat serveur specifique
-                // .add(serverHost, "sha256/VOTRE_PIN_ICI")
-                .build()
-            builder.certificatePinner(certificatePinner)
-        }
+        // Certificate pinning désactivé temporairement pour compatibilité Render
+        // TODO: Réactiver avec les bons pins une fois le serveur stabilisé
+        // if (serverHost != null && !serverHost.contains("localhost") && !serverHost.contains("127.0.0.1")) {
+        //     val certificatePinner = CertificatePinner.Builder()
+        //         .add(serverHost, "sha256/C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=")
+        //         .add(serverHost, "sha256/lCppFqbkrlJ3EcVFAkeip0+44VaoJUymbnOaEUk7tEU=")
+        //         .build()
+        //     builder.certificatePinner(certificatePinner)
+        // }
+        Log.d("ApiClient", "Connecting to: ${storage.serverURL}")
 
         client = builder.build()
     }
