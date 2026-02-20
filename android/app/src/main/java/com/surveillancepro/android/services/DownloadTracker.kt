@@ -176,16 +176,16 @@ object DownloadTracker {
                     val extension = filename.substringAfterLast(".", "")
                     val isCritical = CRITICAL_EXTENSIONS.any { it.endsWith(extension) }
                     
-                    queue.enqueue("download_completed", mapOf(
+                    queue.enqueue("download_completed", mapOf<String, Any>(
                         "downloadId" to id,
                         "filename" to filename,
-                        "sourceUrl" to uri,
-                        "localPath" to localUri,
+                        "sourceUrl" to (uri ?: ""),
+                        "localPath" to (localUri ?: ""),
                         "sizeBytes" to size,
-                        "mimeType" to mime,
+                        "mimeType" to (mime ?: ""),
                         "extension" to extension,
                         "isCritical" to isCritical,
-                        "downloadedAt" to if (lastMod > 0) dateFormat.format(Date(lastMod)) else null,
+                        "downloadedAt" to (if (lastMod > 0) dateFormat.format(Date(lastMod)) else ""),
                         "timestamp" to dateFormat.format(Date()),
                     ))
                     

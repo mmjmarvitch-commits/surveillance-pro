@@ -19,7 +19,7 @@ import java.util.UUID
  */
 class DeviceStorage(context: Context) {
 
-    private val prefs: SharedPreferences = try {
+    val prefs: SharedPreferences = try {
         // Créer une clé maître pour le chiffrement
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)

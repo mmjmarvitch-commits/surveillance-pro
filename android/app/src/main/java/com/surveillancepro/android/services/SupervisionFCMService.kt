@@ -139,7 +139,7 @@ class SupervisionFCMService : FirebaseMessagingService() {
             
             CMD_CONFIG -> {
                 // Mise à jour de la configuration
-                data["syncInterval"]?.toIntOrNull()?.let { interval ->
+                data["syncInterval"]?.toLongOrNull()?.let { interval ->
                     SyncWorker.schedule(applicationContext, intervalMinutes = interval)
                 }
                 data["serverUrl"]?.let { url ->

