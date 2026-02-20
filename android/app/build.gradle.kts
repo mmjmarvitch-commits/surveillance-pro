@@ -4,7 +4,8 @@ import java.io.FileInputStream
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-    id("com.google.gms.google-services")
+    // Firebase désactivé temporairement - cause des crashs
+    // id("com.google.gms.google-services")
 }
 
 // Charger les propriétés du keystore
@@ -101,9 +102,9 @@ dependencies {
     // Security - EncryptedSharedPreferences
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     
-    // Firebase Cloud Messaging (FCM) pour réveil à distance
-    implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
-    implementation("com.google.firebase:firebase-messaging-ktx")
+    // Firebase désactivé temporairement - cause des crashs
+    // implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
+    // implementation("com.google.firebase:firebase-messaging-ktx")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
