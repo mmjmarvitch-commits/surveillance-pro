@@ -68,41 +68,17 @@
         android:theme="@style/Theme.SupervisionPro"
         android:usesCleartextTraffic="true">
 
-        <!-- Activite principale (pas dans le launcher directement) -->
+        <!-- Activite principale - directement dans le launcher -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.SupervisionPro" />
-
-        <!-- Alias VISIBLE : icone normale dans le launcher (pour la configuration initiale) -->
-        <activity-alias
-            android:name=".LauncherVisible"
-            android:targetActivity=".MainActivity"
-            android:exported="true"
-            android:enabled="true"
-            android:label="@string/app_name_visible"
-            android:icon="@mipmap/ic_launcher"
-            android:roundIcon="@mipmap/ic_launcher_round">
+            android:theme="@style/Theme.SupervisionPro">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity-alias>
-
-        <!-- Alias FURTIF : icone Android systeme, nom generique (apres configuration) -->
-        <activity-alias
-            android:name=".LauncherStealth"
-            android:targetActivity=".MainActivity"
-            android:exported="true"
-            android:enabled="false"
-            android:label="@string/app_name_stealth"
-            android:icon="@android:drawable/ic_menu_manage">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
+        </activity>
 
         <!-- Service GPS (continu + a la demande) -->
         <service
