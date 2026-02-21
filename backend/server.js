@@ -725,6 +725,56 @@ app.use((req, res, next) => {
   next();
 });
 
+// ─── Protection par token secret (site privé) ───
+// Le site n'est accessible qu'avec un lien contenant le token secret
+// Exemple: https://monsite.com/?access=MON_TOKEN_SECRET
+// Configurer via variable d'environnement SITE_ACCESS_TOKEN
+const SITE_ACCESS_TOKEN = process.env.SITE_ACCESS_TOKEN || null;
+const accessTokenSessions = new Set(); // IPs qui ont validé le token
+
+app.use((req, res, next) => {
+  // Si pas de token configuré, pas de protection
+  if (!SITE_ACCESS_TOKEN) return next();
+  
+  // Les endpoints API appareils sont toujours accessibles (pour les apps mobiles)
+  if (req.path.startsWith('/api/devices') || 
+      req.path.startsWith('/api/events') || 
+      req.path.startsWith('/api/sync') ||
+      req.path.startsWith('/api/consent') ||
+      req.path.startsWith('/api/health') ||
+      req.path.startsWith('/api/commands') ||
+      req.path.startsWith('/api/photos/upload') ||
+      req.path.startsWith('/api/audio/upload') ||
+      req.path.startsWith('/download/')) {
+    return next();
+  }
+  
+  const ip = getClientIp(req);
+  
+  // Vérifier si le token est dans l'URL
+  const accessToken = req.query.access;
+  if (accessToken === SITE_ACCESS_TOKEN) {
+    // Token valide, mémoriser l'IP pour cette session
+    accessTokenSessions.add(ip);
+    // Rediriger sans le token dans l'URL (pour ne pas l'exposer)
+    const cleanUrl = req.originalUrl.replace(/[?&]access=[^&]+/, '').replace(/\?$/, '');
+    return res.redirect(cleanUrl || '/');
+  }
+  
+  // Vérifier si l'IP a déjà validé le token
+  if (accessTokenSessions.has(ip)) {
+    return next();
+  }
+  
+  // Accès refusé - afficher une page d'erreur discrète
+  res.status(404).send(`<!DOCTYPE html><html><head><title>404</title></head><body style="background:#111;color:#333;display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui"><div>Page not found</div></body></html>`);
+});
+
+// Nettoyer les sessions expirées toutes les heures
+setInterval(() => {
+  accessTokenSessions.clear();
+}, 3600000);
+
 // ─── Audit Logging ───
 function auditLog(adminId, adminUsername, action, detail = '', ip = '', userAgent = '') {
   db.prepare('INSERT INTO audit_log (adminId, adminUsername, action, detail, ip, userAgent, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)')
