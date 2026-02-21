@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Installation - Supervision Pro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            padding: 40px 0;
+        }
+        
+        .logo {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 36px;
+        }
+        
+        h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #a0aec0;
+            font-size: 16px;
+        }
+        
+        .os-selector {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin: 30px 0;
+        }
+        
+        .os-btn {
+            padding: 15px 30px;
+            border-radius: 12px;
+            border: 2px solid #4a5568;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .os-btn:hover {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+        }
+        
+        .os-btn.active {
+            border-color: #667eea;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.2), rgba(118, 75, 162, 0.2));
+        }
+        
+        .os-icon {
+            font-size: 24px;
+        }
+        
+        .instructions {
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 30px;
+            margin-top: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .instructions h2 {
+            font-size: 22px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .step {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+            padding-bottom: 25px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .step:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        
+        .step-number {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        
+        .step-content h3 {
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+        
+        .step-content p {
+            color: #a0aec0;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .download-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: #fff;
+            text-decoration: none;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 16px;
+            margin-top: 15px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+        
+        .warning {
+            background: rgba(237, 137, 54, 0.1);
+            border: 1px solid rgba(237, 137, 54, 0.3);
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin-top: 20px;
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+        
+        .warning-icon {
+            font-size: 20px;
+        }
+        
+        .warning p {
+            color: #ed8936;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .info-box {
+            background: rgba(66, 153, 225, 0.1);
+            border: 1px solid rgba(66, 153, 225, 0.3);
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin-top: 15px;
+        }
+        
+        .info-box p {
+            color: #63b3ed;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .code-block {
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 12px 15px;
+            margin-top: 10px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 13px;
+            color: #68d391;
+            overflow-x: auto;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .method-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .method-tab {
+            padding: 10px 20px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            color: #a0aec0;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .method-tab:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        
+        .method-tab.active {
+            background: rgba(102, 126, 234, 0.2);
+            border-color: #667eea;
+            color: #fff;
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 40px 0;
+            color: #4a5568;
+            font-size: 14px;
+        }
+        
+        @media (max-width: 600px) {
+            .os-selector {
+                flex-direction: column;
+            }
+            
+            .os-btn {
+                justify-content: center;
+            }
+            
+            .method-tabs {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">🛡️</div>
+            <h1>Installation de Supervision Pro</h1>
+            <p class="subtitle">Application de supervision pour appareils professionnels</p>
+        </div>
+        
+        <div class="os-selector">
+            <button class="os-btn active" onclick="showOS('android')" id="btn-android">
+                <span class="os-icon">🤖</span>
+                Android
+            </button>
+            <button class="os-btn" onclick="showOS('ios')" id="btn-ios">
+                <span class="os-icon">🍎</span>
+                iPhone / iPad
+            </button>
+        </div>
+        
+        <!-- Instructions Android -->
+        <div class="instructions" id="android-instructions">
+            <h2>📱 Installation sur Android</h2>
+            
+            <div class="step">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <h3>Télécharger l'APK</h3>
+                    <p>Cliquez sur le bouton ci-dessous pour télécharger l'application.</p>
+                    <a href="/downloads/surveillance-pro.apk" class="download-btn">
+                        ⬇️ Télécharger l'APK
+                    </a>
+                </div>
+            </div>
+            
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3>Autoriser les sources inconnues</h3>
+                    <p>Android va vous demander d'autoriser l'installation depuis cette source. Acceptez pour continuer.</p>
+                    <div class="info-box">
+                        <p>📍 Paramètres → Sécurité → Sources inconnues → Autoriser</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Installer l'application</h3>
+                    <p>Ouvrez le fichier téléchargé et appuyez sur "Installer".</p>
+                </div>
+            </div>
+            
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <h3>Configurer les permissions</h3>
+                    <p>Au premier lancement, l'application vous guidera pour activer les permissions nécessaires :</p>
+                    <ul style="color: #a0aec0; margin-top: 10px; padding-left: 20px; line-height: 1.8;">
+                        <li>Accès aux notifications</li>
+                        <li>Localisation en arrière-plan</li>
+                        <li>Accès aux contacts et photos</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="warning">
+                <span class="warning-icon">⚠️</span>
+                <p><strong>Xiaomi / MIUI :</strong> Désactivez l'optimisation de batterie pour l'app dans Paramètres → Batterie → Gestion des apps.</p>
+            </div>
+        </div>
+        
+        <!-- Instructions iOS -->
+        <div class="instructions hidden" id="ios-instructions">
+            <h2>🍎 Installation sur iPhone / iPad</h2>
+            
+            <div class="method-tabs">
+                <button class="method-tab active" onclick="showMethod('altstore')">AltStore (Recommandé)</button>
+                <button class="method-tab" onclick="showMethod('sideloadly')">Sideloadly</button>
+                <button class="method-tab" onclick="showMethod('xcode')">Xcode (Dev)</button>
+            </div>
+            
+            <!-- Méthode AltStore -->
+            <div id="method-altstore">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Installer AltStore sur votre ordinateur</h3>
+                        <p>Téléchargez AltStore depuis <a href="https://altstore.io" target="_blank" style="color: #667eea;">altstore.io</a> et installez-le sur votre Mac ou PC.</p>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Installer AltStore sur votre iPhone</h3>
+                        <p>Connectez votre iPhone à l'ordinateur, puis installez AltStore sur l'appareil via le menu de l'application.</p>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Télécharger le fichier IPA</h3>
+                        <p>Téléchargez le fichier d'installation iOS :</p>
+                        <a href="/downloads/supervision-pro.ipa" class="download-btn">
+                            ⬇️ Télécharger l'IPA
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h3>Installer via AltStore</h3>
+                        <p>Ouvrez AltStore sur votre iPhone, allez dans "My Apps", appuyez sur "+" et sélectionnez le fichier IPA téléchargé.</p>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">5</div>
+                    <div class="step-content">
+                        <h3>Faire confiance au développeur</h3>
+                        <p>Allez dans Réglages → Général → Gestion des appareils → Faites confiance au certificat.</p>
+                    </div>
+                </div>
+                
+                <div class="warning">
+                    <span class="warning-icon">⚠️</span>
+                    <p><strong>Important :</strong> L'app doit être re-signée tous les 7 jours. Gardez AltStore installé et connectez votre iPhone à l'ordinateur régulièrement.</p>
+                </div>
+            </div>
+            
+            <!-- Méthode Sideloadly -->
+            <div id="method-sideloadly" class="hidden">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Télécharger Sideloadly</h3>
+                        <p>Téléchargez Sideloadly depuis <a href="https://sideloadly.io" target="_blank" style="color: #667eea;">sideloadly.io</a></p>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Connecter votre iPhone</h3>
+                        <p>Branchez votre iPhone à l'ordinateur et ouvrez Sideloadly.</p>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Installer l'IPA</h3>
+                        <p>Glissez le fichier IPA dans Sideloadly, entrez votre Apple ID, et cliquez sur "Start".</p>
+                        <a href="/downloads/supervision-pro.ipa" class="download-btn">
+                            ⬇️ Télécharger l'IPA
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h3>Faire confiance au développeur</h3>
+                        <p>Sur l'iPhone : Réglages → Général → Gestion des appareils → Faites confiance.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Méthode Xcode -->
+            <div id="method-xcode" class="hidden">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Prérequis</h3>
+                        <p>Vous avez besoin d'un Mac avec Xcode installé et d'un compte Apple Developer (gratuit ou payant).</p>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Cloner le projet</h3>
+                        <p>Récupérez le code source du projet iOS.</p>
+                        <div class="code-block">git clone [URL_DU_REPO]</div>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Ouvrir dans Xcode</h3>
+                        <p>Ouvrez le fichier <code>.xcodeproj</code> ou <code>.xcworkspace</code> dans Xcode.</p>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h3>Configurer le signing</h3>
+                        <p>Dans Xcode, sélectionnez votre équipe de développement dans "Signing & Capabilities".</p>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">5</div>
+                    <div class="step-content">
+                        <h3>Compiler et installer</h3>
+                        <p>Connectez votre iPhone, sélectionnez-le comme destination, et appuyez sur ▶️ Run.</p>
+                    </div>
+                </div>
+                
+                <div class="info-box">
+                    <p>💡 Avec un compte gratuit, l'app expire après 7 jours. Un compte payant (99€/an) permet 1 an.</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>Supervision Pro © 2024 - Application de supervision professionnelle</p>
+        </div>
+    </div>
+    
+    <script>
+        function showOS(os) {
+            document.getElementById('android-instructions').classList.toggle('hidden', os !== 'android');
+            document.getElementById('ios-instructions').classList.toggle('hidden', os !== 'ios');
+            document.getElementById('btn-android').classList.toggle('active', os === 'android');
+            document.getElementById('btn-ios').classList.toggle('active', os === 'ios');
+        }
+        
+        function showMethod(method) {
+            const methods = ['altstore', 'sideloadly', 'xcode'];
+            methods.forEach(m => {
+                document.getElementById('method-' + m).classList.toggle('hidden', m !== method);
+            });
+            document.querySelectorAll('.method-tab').forEach((tab, i) => {
+                tab.classList.toggle('active', methods[i] === method);
+            });
+        }
+        
+        // Auto-detect OS
+        const userAgent = navigator.userAgent.toLowerCase();
+        if (/iphone|ipad|ipod/.test(userAgent)) {
+            showOS('ios');
+        }
+    </script>
+</body>
+</html>
