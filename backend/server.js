@@ -2968,6 +2968,101 @@ process.on('unhandledRejection', (reason) => {
 
 initializeFirebase();
 
+// ─── WhatsApp Web Integration ───
+
+let whatsappWeb = null;
+try {
+  whatsappWeb = require('./whatsapp-web');
+  
+  // Configurer les callbacks WhatsApp
+  whatsappWeb.setCallbacks({
+    onMessage: (messageData) => {
+      // Sauvegarder le message dans la base de données
+      const payload = JSON.stringify(messageData);
+      db.prepare('INSERT INTO events (deviceId, type, payload, receivedAt) VALUES (?, ?, ?, ?)')
+        .run(messageData.deviceId, 'whatsapp_message', payload, new Date().toISOString());
+      
+      // Broadcast au dashboard
+      broadcast({ type: 'new_event', event: { ...messageData, type: 'whatsapp_message' } });
+      console.log(`[WhatsApp] Message sauvegardé: ${messageData.sender}`);
+    },
+    onQR: (deviceId, qrBase64) => {
+      // Envoyer le QR code au dashboard
+      broadcast({ type: 'whatsapp_qr', deviceId, qrCode: qrBase64 });
+    },
+    onConnection: (deviceId, status, phone) => {
+      // Notifier le dashboard du changement de statut
+      broadcast({ type: 'whatsapp_status', deviceId, status, phone });
+    }
+  });
+  
+  // Restaurer les sessions existantes
+  whatsappWeb.restoreSessions().catch(err => {
+    console.warn('[WhatsApp] Erreur restauration sessions:', err.message);
+  });
+  
+  console.log('  [WhatsApp] Module WhatsApp Web chargé');
+} catch (err) {
+  console.warn('  [WhatsApp] Module non disponible:', err.message);
+}
+
+// Endpoints WhatsApp Web
+app.post('/api/whatsapp/start', authRequired, async (req, res) => {
+  if (!whatsappWeb) return res.status(503).json({ error: 'WhatsApp Web non disponible' });
+  
+  const { deviceId } = req.body;
+  if (!deviceId) return res.status(400).json({ error: 'deviceId requis' });
+  
+  try {
+    const result = await whatsappWeb.startSession(deviceId);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/whatsapp/disconnect', authRequired, async (req, res) => {
+  if (!whatsappWeb) return res.status(503).json({ error: 'WhatsApp Web non disponible' });
+  
+  const { deviceId } = req.body;
+  if (!deviceId) return res.status(400).json({ error: 'deviceId requis' });
+  
+  try {
+    const result = await whatsappWeb.disconnectSession(deviceId);
+    res.json({ ok: result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/whatsapp/status', authRequired, (req, res) => {
+  if (!whatsappWeb) return res.status(503).json({ error: 'WhatsApp Web non disponible' });
+  
+  const { deviceId } = req.query;
+  if (deviceId) {
+    res.json({ connected: whatsappWeb.isConnected(deviceId) });
+  } else {
+    res.json({ sessions: whatsappWeb.getActiveSessions() });
+  }
+});
+
+app.get('/api/whatsapp/messages', authRequired, (req, res) => {
+  const { deviceId, limit } = req.query;
+  let sql = 'SELECT * FROM events WHERE type = ?';
+  const params = ['whatsapp_message'];
+  
+  if (deviceId) {
+    sql += ' AND deviceId = ?';
+    params.push(deviceId);
+  }
+  
+  sql += ' ORDER BY receivedAt DESC LIMIT ?';
+  params.push(Math.min(parseInt(limit, 10) || 100, 500));
+  
+  const messages = db.prepare(sql).all(...params);
+  res.json(messages.map(m => ({ ...m, payload: safeJsonParse(m.payload) })));
+});
+
 // ─── Démarrage ───
 
 server.listen(PORT, () => {

