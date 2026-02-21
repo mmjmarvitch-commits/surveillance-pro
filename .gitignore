@@ -33,8 +33,11 @@ DerivedData/
 *.swo
 Thumbs.db
 
-# Env
+# Env & Secrets
 .env
+backend/.access-token
+.access-token
+ACCES_PRIVE.md
 
 # Firebase (IMPORTANT - ne jamais commit!)
 backend/firebase-service-account.json

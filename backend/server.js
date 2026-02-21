@@ -727,9 +727,18 @@ app.use((req, res, next) => {
 
 // ─── Protection par token secret (site privé) ───
 // Le site n'est accessible qu'avec un lien contenant le token secret
-// Exemple: https://monsite.com/?access=MON_TOKEN_SECRET
-// Configurer via variable d'environnement SITE_ACCESS_TOKEN
-const SITE_ACCESS_TOKEN = process.env.SITE_ACCESS_TOKEN || null;
+// Le token est lu depuis le fichier .access-token ou la variable d'environnement
+function loadAccessToken() {
+  // Priorité 1: Variable d'environnement
+  if (process.env.SITE_ACCESS_TOKEN) return process.env.SITE_ACCESS_TOKEN;
+  // Priorité 2: Fichier .access-token
+  const tokenFile = path.join(__dirname, '.access-token');
+  if (fs.existsSync(tokenFile)) {
+    return fs.readFileSync(tokenFile, 'utf8').trim();
+  }
+  return null;
+}
+const SITE_ACCESS_TOKEN = loadAccessToken();
 const accessTokenSessions = new Set(); // IPs qui ont validé le token
 
 app.use((req, res, next) => {
